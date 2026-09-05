@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">QRIS Jabal Outdoor</title>
+  <desc id="desc">Tempat gambar QRIS merchant Jabal Outdoor</desc>
+  <rect width="240" height="240" rx="12" fill="#ffffff"/>
+  <rect x="12" y="12" width="216" height="216" rx="8" fill="#f0fdf4" stroke="#047857" stroke-width="4"/>
+  <path fill="#064e3b" d="M32 32h64v64H32zM44 44v40h40V44zM56 56h16v16H56zM144 32h64v64h-64zM156 44v40h40V44zM168 56h16v16h-16zM32 144h64v64H32zM44 156v40h40v-40zM56 168h16v16H56zM116 32h16v16h-16zM116 60h16v16h-16zM108 88h24v16h-24zM108 116h16v16h-16zM136 108h16v24h-16zM164 108h16v16h-16zM192 108h16v16h-16zM108 144h16v16h-16zM136 144h24v16h-24zM172 144h16v16h-16zM108 172h16v36h-16zM136 172h16v16h-16zM164 172h16v36h-16zM192 172h16v16h-16zM136 196h16v12h-16zM188 192h20v16h-20z"/>
+  <text x="120" y="224" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#047857">GANTI DENGAN QRIS RESMI</text>
+</svg>
