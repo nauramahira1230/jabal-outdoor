@@ -45,28 +45,37 @@ const searchProduct = ref('')
 const selectedCategoryFilter = ref('')
 const searchOrder = ref('')
 const statusOrderFilter = ref('')
+const reportPeriod = ref('month')
+const reportStartDate = ref('')
+const reportEndDate = ref('')
 
 // State Transaksi / Booking
 const cart = ref([])
 const customerName = ref('')
 const customerPhone = ref('')
+const guaranteeIdentity = ref('')
 const startDate = ref('')
 const endDate = ref('')
 const fulfillmentMethod = ref('Ambil di Toko')
 const deliveryAddress = ref('')
 const paymentMethod = ref('Tunai')
 const amountPaid = ref(0)
+const diskon = ref(0)
+const paymentStatus = ref('Lunas')
 const proofFile = ref(null)
 const bookingSuccessModal = ref(false)
 const checkoutModalOpen = ref(false)
+const cashierCheckoutOpen = ref(false)
+const mobileCashierCheckoutOpen = ref(false)
 const lastBookingData = ref(null)
 const selectedProduct = ref(null)
 
 // State Riwayat & Modal
 const orders = ref([])
+const isResettingOrders = ref(false)
 const receiptModalData = ref(null)
 const returnModalOrder = ref(null)
-const lateDaysInput = ref(0)
+const lateFeeInput = ref(0)
 const damageFeeInput = ref(0)
 const returnNotesInput = ref('')
 
@@ -186,7 +195,8 @@ const stats = computed(() => {
   orders.value.forEach(order => {
     if (order.status === 'Ditolak' || order.status === 'Menunggu Konfirmasi') return
 
-    const finalTotal = Number(order.total_price || 0) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)
+    const rentalTotal = Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0))
+    const finalTotal = rentalTotal + Number(order.late_fee || 0) + Number(order.damage_fee || 0)
     totalIncomeAll += finalTotal
 
     const orderDate = order.created_at ? order.created_at.split('T')[0] : ''
@@ -224,6 +234,60 @@ const stats = computed(() => {
   }
 })
 
+const reportDateRange = computed(() => {
+  const today = new Date()
+  const todayString = today.toISOString().split('T')[0]
+
+  if (reportPeriod.value === 'today') return { start: todayString, end: todayString }
+  if (reportPeriod.value === 'week') {
+    const weekStart = new Date(today)
+    const day = weekStart.getDay() || 7
+    weekStart.setDate(weekStart.getDate() - day + 1)
+    return {
+      start: weekStart.toISOString().split('T')[0],
+      end: todayString
+    }
+  }
+  if (reportPeriod.value === 'custom') {
+    return { start: reportStartDate.value, end: reportEndDate.value }
+  }
+
+  return { start: todayString.slice(0, 7) + '-01', end: todayString }
+})
+
+const reportOrders = computed(() => {
+  const { start, end } = reportDateRange.value
+  if (!start || !end) return []
+  return orders.value.filter(order => {
+    const orderDate = order.created_at?.split('T')[0]
+    return orderDate && orderDate >= start && orderDate <= end
+  })
+})
+
+const reportStats = computed(() => {
+  let totalIncome = 0
+  let totalDiscount = 0
+  let cashIncome = 0
+
+  reportOrders.value.forEach(order => {
+    if (order.status === 'Ditolak' || order.status === 'Menunggu Konfirmasi') return
+
+    const discount = Number(order.diskon || 0)
+    const total = Math.max(0, Number(order.total_price || 0) - discount) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)
+    totalIncome += total
+    totalDiscount += discount
+    if (order.payment_method === 'Tunai') cashIncome += total
+  })
+
+  return {
+    totalIncome,
+    totalDiscount,
+    netProfit: totalIncome,
+    cashIncome,
+    orderCount: reportOrders.value.length
+  }
+})
+
 // Keranjang
 const addToCart = (product) => {
   const existing = cart.value.find(item => item.id === product.id)
@@ -239,6 +303,7 @@ const addToCart = (product) => {
       image_url: product.image_url
     })
   }
+  cashierCheckoutOpen.value = true
 }
 
 const showProductDetails = (product) => {
@@ -262,6 +327,8 @@ const updateQty = (id, delta) => {
   item.qty += delta
   if (item.qty <= 0) cart.value = cart.value.filter(i => i.id !== id)
   if (cart.value.length === 0) checkoutModalOpen.value = false
+  if (cart.value.length === 0) cashierCheckoutOpen.value = false
+  if (cart.value.length === 0) mobileCashierCheckoutOpen.value = false
 }
 
 const totalDays = computed(() => {
@@ -277,14 +344,35 @@ const today = new Date().toISOString().split('T')[0]
 const minimumEndDate = computed(() => startDate.value || today)
 const cartItemCount = computed(() => cart.value.reduce((total, item) => total + item.qty, 0))
 
-const totalPrice = computed(() => {
+const subtotalPrice = computed(() => {
   const subtotalPerDay = cart.value.reduce((sum, item) => sum + (item.price_per_day * item.qty), 0)
   return subtotalPerDay * totalDays.value
 })
 
+const discountAmount = computed(() => Math.max(0, Number(diskon.value) || 0))
+const totalPrice = computed(() => Math.max(0, subtotalPrice.value - discountAmount.value))
+const minimumDp = computed(() => Math.round(totalPrice.value * 0.5))
+const selectedPaymentAmount = computed(() => paymentStatus.value === 'DP 50%' ? minimumDp.value : totalPrice.value)
+const remainingBalance = computed(() => Math.max(0, totalPrice.value - selectedPaymentAmount.value))
+
+const resetCashierCheckout = () => {
+  cart.value = []
+  cashierCheckoutOpen.value = false
+  mobileCashierCheckoutOpen.value = false
+  customerName.value = ''
+  customerPhone.value = ''
+  guaranteeIdentity.value = ''
+  startDate.value = ''
+  endDate.value = ''
+  paymentMethod.value = 'Tunai'
+  amountPaid.value = 0
+  diskon.value = 0
+  paymentStatus.value = 'Lunas'
+}
+
 const changeAmount = computed(() => {
   if (paymentMethod.value !== 'Tunai') return 0
-  const change = Number(amountPaid.value) - totalPrice.value
+  const change = Number(amountPaid.value) - selectedPaymentAmount.value
   return change > 0 ? change : 0
 })
 
@@ -292,6 +380,7 @@ const changeAmount = computed(() => {
 const handleProofChange = (e) => { proofFile.value = e.target.files[0] }
 
 const selectPaymentMethod = (method) => {
+  if (method === 'Tunai' && fulfillmentMethod.value === 'Antar') return
   paymentMethod.value = method
   proofFile.value = null
 }
@@ -299,6 +388,7 @@ const selectPaymentMethod = (method) => {
 const selectFulfillmentMethod = (method) => {
   fulfillmentMethod.value = method
   if (method === 'Ambil di Toko') deliveryAddress.value = ''
+  if (method === 'Antar' && paymentMethod.value === 'Tunai') paymentMethod.value = 'Transfer Bank'
 }
 
 const uploadProof = async (file) => {
@@ -332,13 +422,19 @@ const processCheckout = async (isCustomerBooking = false) => {
     return
   }
 
+  if (isCustomerBooking && fulfillmentMethod.value === 'Antar' && paymentMethod.value === 'Tunai') {
+    alert('Pembayaran tunai tidak tersedia untuk pengantaran. Silakan pilih QRIS atau Transfer Bank.')
+    return
+  }
+
   if (isCustomerBooking && paymentMethod.value === 'QRIS' && !proofFile.value) {
     alert('Silakan upload bukti pembayaran QRIS sebelum mengirim booking!')
     return
   }
 
-  if (!isCustomerBooking && paymentMethod.value === 'Tunai' && Number(amountPaid.value) < totalPrice.value) {
-    alert('Uang pembayaran tunai masih kurang!')
+  const requiredPayment = paymentStatus.value === 'DP 50%' ? minimumDp.value : totalPrice.value
+  if (!isCustomerBooking && paymentMethod.value === 'Tunai' && Number(amountPaid.value) < requiredPayment) {
+    alert(`Uang pembayaran tunai minimal Rp ${requiredPayment.toLocaleString('id-ID')}!`)
     return
   }
 
@@ -349,7 +445,9 @@ const processCheckout = async (isCustomerBooking = false) => {
     }
 
     const orderStatus = isCustomerBooking ? 'Menunggu Konfirmasi' : 'Aktif'
-    const finalPaid = isCustomerBooking ? 0 : (paymentMethod.value === 'Tunai' ? Number(amountPaid.value) : totalPrice.value)
+    const orderDiscount = isCustomerBooking ? 0 : discountAmount.value
+    const dpAmount = paymentStatus.value === 'DP 50%' ? minimumDp.value : totalPrice.value
+    const finalPaid = paymentMethod.value === 'Tunai' ? Number(amountPaid.value) : dpAmount
     const finalChange = isCustomerBooking ? 0 : (paymentMethod.value === 'Tunai' ? changeAmount.value : 0)
 
     const { data: orderData, error: orderError } = await supabase
@@ -357,10 +455,14 @@ const processCheckout = async (isCustomerBooking = false) => {
       .insert([{
         customer_name: customerName.value,
         customer_phone: customerPhone.value,
+        guarantee_identity: guaranteeIdentity.value.trim() || null,
         start_date: startDate.value,
         end_date: endDate.value,
         total_days: totalDays.value,
-        total_price: totalPrice.value,
+        total_price: subtotalPrice.value,
+        diskon: orderDiscount,
+        dp_amount: dpAmount,
+        payment_status: paymentStatus.value,
         ...(isCustomerBooking ? {
           fulfillment_method: fulfillmentMethod.value,
           delivery_address: fulfillmentMethod.value === 'Antar' ? deliveryAddress.value.trim() : null
@@ -415,14 +517,19 @@ const processCheckout = async (isCustomerBooking = false) => {
 
     cart.value = []
     checkoutModalOpen.value = false
+    cashierCheckoutOpen.value = false
+    mobileCashierCheckoutOpen.value = false
     customerName.value = ''
     customerPhone.value = ''
+    guaranteeIdentity.value = ''
     startDate.value = ''
     endDate.value = ''
     fulfillmentMethod.value = 'Ambil di Toko'
     deliveryAddress.value = ''
     paymentMethod.value = 'Tunai'
     amountPaid.value = 0
+    paymentStatus.value = 'Lunas'
+    diskon.value = 0
     proofFile.value = null
     fetchProducts()
     fetchOrders()
@@ -465,25 +572,84 @@ const rejectOnlineOrder = async (order) => {
   }
 }
 
+const settleOrder = async (order) => {
+  const remaining = Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0) - Number(order.dp_amount || 0))
+  if (!confirm(`Terima pelunasan sisa Rp ${remaining.toLocaleString('id-ID')} dari ${order.customer_name}?`)) return
+
+  const finalTotal = Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0))
+  const { error } = await supabase
+    .from('orders')
+    .update({ payment_status: 'Lunas', dp_amount: finalTotal, amount_paid: finalTotal })
+    .eq('id', order.id)
+
+  if (error) {
+    alert('Gagal menyimpan pelunasan: ' + error.message)
+    return
+  }
+
+  alert('Pelunasan berhasil dicatat. Status transaksi sekarang Lunas.')
+  fetchOrders()
+}
+
+const resetOrderHistory = async () => {
+  if (orders.value.length === 0) {
+    alert('Belum ada data transaksi untuk direset.')
+    return
+  }
+
+  const confirmed = confirm('Reset semua riwayat sewa dan laporan keuangan? Data transaksi tidak dapat dikembalikan.')
+  if (!confirmed) return
+
+  isResettingOrders.value = true
+  try {
+    // Kembalikan stok hanya untuk transaksi yang masih aktif dan belum dikembalikan.
+    const stockToRestore = {}
+    for (const order of orders.value.filter(item => item.status === 'Aktif')) {
+      for (const item of order.order_items || []) {
+        stockToRestore[item.product_id] = (stockToRestore[item.product_id] || 0) + item.quantity
+      }
+    }
+
+    for (const [productId, quantity] of Object.entries(stockToRestore)) {
+      const product = products.value.find(productItem => productItem.id === Number(productId) || productItem.id === productId)
+      if (product) {
+        const { error } = await supabase
+          .from('products')
+          .update({ total_stock: product.total_stock + quantity })
+          .eq('id', product.id)
+        if (error) throw error
+      }
+    }
+
+    const orderIds = orders.value.map(order => order.id)
+    const { error: itemsError } = await supabase.from('order_items').delete().in('order_id', orderIds)
+    if (itemsError) throw itemsError
+
+    const { error: ordersError } = await supabase.from('orders').delete().in('id', orderIds)
+    if (ordersError) throw ordersError
+
+    orders.value = []
+    await fetchProducts()
+    alert('Riwayat sewa dan laporan keuangan berhasil direset.')
+  } catch (err) {
+    alert('Gagal mereset data transaksi: ' + err.message)
+  } finally {
+    isResettingOrders.value = false
+  }
+}
+
 // Pengembalian & Denda
 const openReturnModal = (order) => {
   returnModalOrder.value = order
-  const dueInfo = getDueDateStatus(order)
-  lateDaysInput.value = dueInfo.lateDays || 0
+  lateFeeInput.value = 0
   damageFeeInput.value = 0
   returnNotesInput.value = ''
 }
 
-const calculatedLateFee = computed(() => {
-  if (!returnModalOrder.value || lateDaysInput.value <= 0) return 0
-  const ratePerDay = returnModalOrder.value.total_price / returnModalOrder.value.total_days
-  return Math.round(ratePerDay * lateDaysInput.value)
-})
-
 const submitReturn = async () => {
   if (!returnModalOrder.value) return
   const order = returnModalOrder.value
-  const lateFee = calculatedLateFee.value
+  const lateFee = Math.max(0, Number(lateFeeInput.value) || 0)
   const damageFee = Number(damageFeeInput.value || 0)
 
   try {
@@ -534,14 +700,17 @@ const buildWhatsAppOrderMessage = (order, isCustomerConfirmation = false) => {
   }
 
   const baseTotal = Number(order.total_price || 0)
+  const discount = Number(order.diskon || 0)
   const lateFee = Number(order.late_fee || 0)
   const damageFee = Number(order.damage_fee || 0)
-  const finalTotal = baseTotal + lateFee + damageFee
+  const rentalTotal = Math.max(0, baseTotal - discount)
+  const finalTotal = rentalTotal + lateFee + damageFee
   const fulfillment = order.fulfillment_method || 'Ambil di Toko'
   const deliveryText = fulfillment === 'Antar' && order.delivery_address
     ? `\nAlamat Antar: ${order.delivery_address}`
     : ''
-  const feeText = `${lateFee > 0 ? `\nDenda Keterlambatan: Rp ${lateFee.toLocaleString('id-ID')}` : ''}${damageFee > 0 ? `\nDenda Kerusakan/Hilang: Rp ${damageFee.toLocaleString('id-ID')}` : ''}`
+  const discountText = discount > 0 ? `\nDiskon / Potongan: -Rp ${discount.toLocaleString('id-ID')}` : ''
+  const feeText = `${discountText}${lateFee > 0 ? `\nDenda Keterlambatan: Rp ${lateFee.toLocaleString('id-ID')}` : ''}${damageFee > 0 ? `\nDenda Kerusakan/Hilang: Rp ${damageFee.toLocaleString('id-ID')}` : ''}`
   const goSendText = fulfillment === 'Antar'
     ? '\nCatatan: Biaya pengantaran GoSend belum termasuk total sewa. Estimasi biaya akan dikonfirmasi melalui WhatsApp.'
     : ''
@@ -567,22 +736,20 @@ const sendBookingConfirmationToAdmin = (order) => {
 
 // Export Excel & PDF
 const exportToExcel = () => {
-  const excelData = orders.value.map(order => ({
-    'ID Transaksi': order.id,
+  const excelData = reportOrders.value.map(order => ({
     'Tipe': order.order_type || 'offline',
     'Tanggal Transaksi': order.created_at ? order.created_at.split('T')[0] : '',
     'Nama Pelanggan': order.customer_name,
-    'No WA': order.customer_phone,
-    'Tgl Mulai': order.start_date,
-    'Tgl Kembali': order.end_date,
-    'Durasi (Hari)': order.total_days,
-    'Total (Rp)': Number(order.total_price),
+    'Subtotal (Rp)': Number(order.total_price),
+    'Diskon (Rp)': Number(order.diskon || 0),
+    'Total Akhir (Rp)': Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0)) + Number(order.late_fee || 0) + Number(order.damage_fee || 0),
+    'Metode Bayar': order.payment_method || '-',
     'Status': order.status
   }))
   const ws = XLSX.utils.json_to_sheet(excelData)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Laporan Keuangan')
-  XLSX.writeFile(wb, `Laporan_JabalOutdoor_${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `Laporan_JabalOutdoor_${reportDateRange.value.start || 'periode'}_sd_${reportDateRange.value.end || 'periode'}.xlsx`)
 }
 
 const exportToPDF = () => {
@@ -590,15 +757,18 @@ const exportToPDF = () => {
   doc.setFontSize(16)
   doc.text('JABAL OUTDOOR STORE - LAPORAN KEUANGAN', 14, 15)
   doc.setFontSize(10)
-  doc.text(`Total Pendapatan: Rp ${stats.value.totalIncomeAll.toLocaleString('id-ID')}`, 14, 25)
-  doc.text(`Total Transaksi: ${orders.value.length}`, 14, 30)
+  doc.text(`Periode: ${reportDateRange.value.start || '-'} s/d ${reportDateRange.value.end || '-'}`, 14, 23)
+  doc.text(`Total Pendapatan: Rp ${reportStats.value.totalIncome.toLocaleString('id-ID')}`, 14, 29)
+  doc.text(`Total Diskon: Rp ${reportStats.value.totalDiscount.toLocaleString('id-ID')}`, 14, 35)
+  doc.text(`Total Transaksi: ${reportStats.value.orderCount}`, 14, 41)
 
-  let y = 40
-  orders.value.slice(0, 25).forEach((o, i) => {
-    doc.text(`${i+1}. ${o.customer_name} | ${o.start_date} s/d ${o.end_date} | Rp ${Number(o.total_price).toLocaleString('id-ID')} | [${o.status}]`, 14, y)
+  let y = 51
+  reportOrders.value.slice(0, 25).forEach((o, i) => {
+    const total = Math.max(0, Number(o.total_price || 0) - Number(o.diskon || 0)) + Number(o.late_fee || 0) + Number(o.damage_fee || 0)
+    doc.text(`${i+1}. ${o.customer_name} | ${o.start_date} s/d ${o.end_date} | Rp ${total.toLocaleString('id-ID')} | [${o.status}]`, 14, y)
     y += 6
   })
-  doc.save(`Laporan_JabalOutdoor_${new Date().toISOString().split('T')[0]}.pdf`)
+  doc.save(`Laporan_JabalOutdoor_${reportDateRange.value.start || 'periode'}_sd_${reportDateRange.value.end || 'periode'}.pdf`)
 }
 
 const printReceipt = () => { window.print() }
@@ -728,6 +898,7 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
     </header>
 
     <!-- ========================================== -->
@@ -775,10 +946,12 @@ onUnmounted(() => {
             Alat camping tidak ditemukan.
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border border-slate-200 p-3 flex flex-col justify-between hover:shadow-md transition">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between hover:shadow-md transition">
               <div>
-                <img :src="item.image_url || 'https://via.placeholder.com/150'" class="w-full h-32 object-cover rounded-lg mb-2 bg-slate-50" />
+                <div class="w-full h-56 sm:h-64 rounded-lg mb-3 bg-slate-50 flex items-center justify-center overflow-hidden">
+                  <img :src="item.image_url || 'https://via.placeholder.com/150'" :alt="item.name" class="w-full h-full object-contain" />
+                </div>
                 <span class="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{{ item.category }}</span>
                 <h4 class="font-bold text-slate-800 text-sm mt-1 leading-snug">{{ item.name }}</h4>
                 <p class="text-xs text-slate-500 mt-1">Rp {{ Number(item.price_per_day).toLocaleString('id-ID') }} <span class="text-[10px]">/hari</span></p>
@@ -877,7 +1050,7 @@ onUnmounted(() => {
             <div class="grid grid-cols-3 gap-1.5">
               <button @click="selectPaymentMethod('QRIS')" :class="paymentMethod === 'QRIS' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold cursor-pointer">📱 QRIS</button>
               <button @click="selectPaymentMethod('Transfer Bank')" :class="paymentMethod === 'Transfer Bank' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold cursor-pointer">🏦 Transfer</button>
-              <button @click="selectPaymentMethod('Tunai')" :class="paymentMethod === 'Tunai' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold cursor-pointer">💵 Tunai</button>
+              <button @click="selectPaymentMethod('Tunai')" :disabled="fulfillmentMethod === 'Antar'" :class="paymentMethod === 'Tunai' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50">💵 Tunai<span v-if="fulfillmentMethod === 'Antar'" class="block text-[9px]">Tidak tersedia</span></button>
             </div>
 
             <div v-if="paymentMethod === 'QRIS'" class="bg-emerald-50 p-3 rounded-lg border border-emerald-200 text-[11px] space-y-2 text-center">
@@ -896,6 +1069,17 @@ onUnmounted(() => {
               <input type="file" accept="image/*" @change="handleProofChange" class="w-full text-xs border rounded-lg p-1.5 bg-white" />
             </div>
             <div v-else class="bg-slate-50 p-2.5 rounded-lg border text-[11px] text-slate-600">Bayar tunai saat mengambil alat di toko.</div>
+          </div>
+
+          <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs space-y-2">
+            <p class="font-bold text-slate-700">Pilihan Pembayaran</p>
+            <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="DP 50%" /> Bayar DP (50%)</label>
+            <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="Lunas" /> Bayar Lunas (100%)</label>
+            <div class="border-t border-emerald-200 pt-2 space-y-1">
+              <div class="flex justify-between"><span>Total Biaya Sewa:</span><b>Rp {{ totalPrice.toLocaleString('id-ID') }}</b></div>
+              <div class="flex justify-between text-emerald-800 font-bold"><span>Minimal DP (50%):</span><span>Rp {{ minimumDp.toLocaleString('id-ID') }}</span></div>
+              <div class="flex justify-between"><span>Sisa Pelunasan di Toko:</span><b>Rp {{ remainingBalance.toLocaleString('id-ID') }}</b></div>
+            </div>
           </div>
 
           <div class="bg-slate-50 p-3 rounded-lg text-slate-800 space-y-1 text-xs border">
@@ -1017,9 +1201,11 @@ onUnmounted(() => {
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border p-3 flex flex-col justify-between">
+              <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border p-4 flex flex-col justify-between">
                 <div>
-                  <img :src="item.image_url || 'https://via.placeholder.com/150'" class="w-full h-28 object-cover rounded-lg mb-2 bg-slate-50" />
+                    <div class="w-full h-48 rounded-lg mb-3 bg-slate-50 flex items-center justify-center overflow-hidden">
+                      <img :src="item.image_url || 'https://via.placeholder.com/150'" :alt="item.name" class="w-full h-full object-contain" />
+                    </div>
                   <span class="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{{ item.category }}</span>
                   <h4 class="font-bold text-slate-800 text-sm mt-1 leading-snug">{{ item.name }}</h4>
                   <p class="text-xs text-slate-500 mt-1">Rp {{ Number(item.price_per_day).toLocaleString('id-ID') }} /hari</p>
@@ -1035,11 +1221,10 @@ onUnmounted(() => {
           </div>
 
           <!-- Form Checkout Kasir -->
-          <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4 h-fit">
+          <div v-if="cart.length > 0" class="hidden lg:block bg-white p-5 rounded-xl shadow-sm border space-y-4 h-fit lg:sticky lg:top-4 self-start">
             <h3 class="text-base font-bold text-slate-800 border-b pb-2">🧾 Transaksi Kasir</h3>
             
-            <div v-if="cart.length === 0" class="text-center py-6 text-slate-400 text-xs">Keranjang transaksi kosong</div>
-            <div v-else class="space-y-2 max-h-40 overflow-y-auto pr-1">
+            <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
               <div v-for="item in cart" :key="item.id" class="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-lg">
                 <div>
                   <p class="font-bold text-slate-800">{{ item.name }}</p>
@@ -1053,12 +1238,21 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="space-y-3 pt-2 border-t">
+            <div v-if="cashierCheckoutOpen" class="space-y-3 pt-2 border-t">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-bold text-slate-700">Detail Checkout Kasir</h4>
+                <button @click="cashierCheckoutOpen = false" class="text-xs text-slate-500 hover:text-slate-800">Tutup</button>
+              </div>
               <input v-model="customerName" type="text" placeholder="Nama Pelanggan" class="w-full border rounded-lg p-2 text-xs" />
               <input v-model="customerPhone" type="text" placeholder="No. WhatsApp" class="w-full border rounded-lg p-2 text-xs" />
+              <input v-model="guaranteeIdentity" type="text" placeholder="Identitas Jaminan (KTP/SIM)" class="w-full border rounded-lg p-2 text-xs" />
               <div class="grid grid-cols-2 gap-2">
                 <input v-model="startDate" type="date" class="w-full border rounded-lg p-1.5 text-xs" />
                 <input v-model="endDate" type="date" class="w-full border rounded-lg p-1.5 text-xs" />
+              </div>
+              <div class="flex justify-between bg-slate-50 p-2 rounded-lg text-xs">
+                <span>Durasi Sewa:</span>
+                <span class="font-bold">{{ totalDays }} Hari</span>
               </div>
 
               <!-- Pembayaran Kasir -->
@@ -1083,17 +1277,39 @@ onUnmounted(() => {
                   <p><b>SeaBank:</b> 901389650069 a.n. Mahmud Rosyad Al Farizi</p>
                   <p><b>DANA & ShopeePay:</b> 089517829189 a.n. Mahmud Rosyad Al Farizi</p>
                 </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Diskon / Potongan Harga (Rp)</label>
+                  <input v-model="diskon" type="number" min="0" step="1000" placeholder="0" class="w-full border rounded-lg p-2 text-xs font-bold" />
+                </div>
+                <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs space-y-2">
+                  <p class="font-bold text-slate-700">Pilihan Pembayaran</p>
+                  <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="DP 50%" /> Bayar DP (50%)</label>
+                  <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="Lunas" /> Bayar Lunas (100%)</label>
+                  <div class="border-t border-emerald-200 pt-2 space-y-1">
+                    <div class="flex justify-between"><span>Total Biaya Sewa:</span><b>Rp {{ totalPrice.toLocaleString('id-ID') }}</b></div>
+                    <div class="flex justify-between text-emerald-800 font-bold"><span>Minimal DP (50%):</span><span>Rp {{ minimumDp.toLocaleString('id-ID') }}</span></div>
+                    <div class="flex justify-between"><span>Sisa Pelunasan di Toko:</span><b>Rp {{ remainingBalance.toLocaleString('id-ID') }}</b></div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="bg-emerald-50 p-3 rounded-lg text-emerald-900 text-xs flex justify-between font-bold">
-              <span>Total Tagihan:</span>
-              <span class="text-sm text-emerald-800">Rp {{ totalPrice.toLocaleString('id-ID') }}</span>
-            </div>
+            <div v-if="cashierCheckoutOpen" class="space-y-2">
+              <div class="bg-emerald-50 p-3 rounded-lg text-emerald-900 text-xs flex justify-between font-bold">
+                <span>Total Tagihan:</span>
+                <span class="text-sm text-emerald-800">Rp {{ totalPrice.toLocaleString('id-ID') }}</span>
+              </div>
 
-            <button @click="processCheckout(false)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg text-xs shadow cursor-pointer">
-              Cetak Struk & Simpan Transaksi
-            </button>
+              <div class="flex gap-2">
+                <button @click="processCheckout(false)" class="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg text-xs shadow cursor-pointer">
+                  Cetak Struk & Simpan
+                </button>
+                <button @click="resetCashierCheckout" type="button" class="bg-slate-200 hover:bg-red-100 text-slate-700 hover:text-red-700 font-bold px-3 py-2.5 rounded-lg text-xs">
+                  Reset / Batal
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1140,11 +1356,12 @@ onUnmounted(() => {
 
                 <div class="bg-white p-2.5 rounded-lg border space-y-1 text-slate-700">
                   <div class="flex justify-between"><span>Subtotal Sewa:</span><span>Rp {{ Number(order.total_price || 0).toLocaleString('id-ID') }}</span></div>
+                  <div v-if="Number(order.diskon || 0) > 0" class="flex justify-between text-red-600"><span>Diskon / Potongan:</span><span>-Rp {{ Number(order.diskon).toLocaleString('id-ID') }}</span></div>
                   <div v-if="Number(order.late_fee || 0) > 0" class="flex justify-between"><span>Denda Keterlambatan:</span><span>Rp {{ Number(order.late_fee).toLocaleString('id-ID') }}</span></div>
                   <div v-if="Number(order.damage_fee || 0) > 0" class="flex justify-between"><span>Denda Kerusakan/Hilang:</span><span>Rp {{ Number(order.damage_fee).toLocaleString('id-ID') }}</span></div>
                   <div class="flex justify-between border-t pt-1 text-sm font-black text-emerald-800">
                     <span>Total Akhir:</span>
-                    <span>Rp {{ (Number(order.total_price || 0) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)).toLocaleString('id-ID') }}</span>
+                    <span>Rp {{ (Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0)) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)).toLocaleString('id-ID') }}</span>
                   </div>
                 </div>
               </div>
@@ -1185,6 +1402,9 @@ onUnmounted(() => {
                 <option value="Terlambat">🚨 Terlambat</option>
                 <option value="Selesai">Selesai</option>
               </select>
+              <button @click="resetOrderHistory" :disabled="isResettingOrders" class="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-bold px-3 py-1 rounded-lg text-xs border border-red-200">
+                {{ isResettingOrders ? 'Mereset...' : '🗑️ Reset Riwayat' }}
+              </button>
             </div>
           </div>
 
@@ -1196,6 +1416,7 @@ onUnmounted(() => {
                   <th class="p-3">Tipe & Periode</th>
                   <th class="p-3 text-center">Tenggat</th>
                   <th class="p-3">Total</th>
+                  <th class="p-3 text-center">Pelunasan</th>
                   <th class="p-3 text-center">Status</th>
                   <th class="p-3 text-center">Aksi</th>
                 </tr>
@@ -1218,7 +1439,12 @@ onUnmounted(() => {
                     </span>
                   </td>
                   <td class="p-3 font-bold text-emerald-700">
-                    Rp {{ (Number(item.total_price) + Number(item.late_fee || 0) + Number(item.damage_fee || 0)).toLocaleString('id-ID') }}
+                    Rp {{ (Math.max(0, Number(item.total_price || 0) - Number(item.diskon || 0)) + Number(item.late_fee || 0) + Number(item.damage_fee || 0)).toLocaleString('id-ID') }}
+                  </td>
+                  <td class="p-3 text-center">
+                    <span :class="item.payment_status === 'DP 50%' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'" class="text-[11px] font-bold px-2 py-1 rounded-full">
+                      {{ item.payment_status || 'Lunas' }}
+                    </span>
                   </td>
                   <td class="p-3 text-center">
                     <span :class="item.status === 'Aktif' ? 'bg-amber-100 text-amber-800' : (item.status === 'Selesai' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200')" class="text-[11px] font-bold px-2.5 py-1 rounded-full">
@@ -1235,6 +1461,9 @@ onUnmounted(() => {
                     <button v-if="item.status === 'Aktif'" @click="openReturnModal(item)" class="text-xs bg-amber-600 text-white px-2 py-1 rounded">
                       Kembalikan
                     </button>
+                    <button v-if="item.payment_status === 'DP 50%'" @click="settleOrder(item)" class="text-xs bg-emerald-700 text-white px-2 py-1 rounded">
+                      Pelunasan Sisa
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -1247,30 +1476,82 @@ onUnmounted(() => {
           <div class="flex flex-col sm:flex-row justify-between bg-white p-4 rounded-xl border shadow-sm gap-3">
             <div>
               <h3 class="font-bold text-slate-800">📊 Ekspor Laporan Keuangan</h3>
-              <p class="text-xs text-slate-500">Unduh data transaksi dalam format Excel atau PDF</p>
+              <p class="text-xs text-slate-500">Rekap transaksi dan pendapatan berdasarkan periode</p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="text-xs font-semibold text-slate-600">Periode:</label>
+              <select v-model="reportPeriod" class="border rounded-lg px-3 py-2 text-xs font-semibold">
+                <option value="today">Hari Ini</option>
+                <option value="week">Minggu Ini</option>
+                <option value="month">Bulan Ini</option>
+                <option value="custom">Custom Tanggal</option>
+              </select>
+              <template v-if="reportPeriod === 'custom'">
+                <input v-model="reportStartDate" type="date" class="border rounded-lg px-2 py-2 text-xs" />
+                <span class="text-xs text-slate-500">s/d</span>
+                <input v-model="reportEndDate" type="date" :min="reportStartDate" class="border rounded-lg px-2 py-2 text-xs" />
+              </template>
               <button @click="exportToExcel" class="bg-emerald-700 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">📊 Excel (.xlsx)</button>
               <button @click="exportToPDF" class="bg-red-700 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">📄 PDF</button>
+              <button @click="resetOrderHistory" :disabled="isResettingOrders" class="bg-slate-200 hover:bg-red-100 disabled:opacity-50 text-red-700 font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">
+                {{ isResettingOrders ? 'Mereset...' : '🗑️ Reset Data' }}
+              </button>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <div class="bg-white p-5 rounded-xl border shadow-sm">
-              <p class="text-xs text-slate-500 font-bold uppercase">Pemasukan Hari Ini</p>
-              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ stats.totalIncomeToday.toLocaleString('id-ID') }}</p>
+              <p class="text-xs text-slate-500 font-bold uppercase">Total Pendapatan</p>
+              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ reportStats.totalIncome.toLocaleString('id-ID') }}</p>
             </div>
             <div class="bg-white p-5 rounded-xl border shadow-sm">
-              <p class="text-xs text-slate-500 font-bold uppercase">Pemasukan Bulan Ini</p>
-              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ stats.totalIncomeMonth.toLocaleString('id-ID') }}</p>
+              <p class="text-xs text-slate-500 font-bold uppercase">Total Diskon Diberikan</p>
+              <p class="text-2xl font-black text-red-600 mt-1">Rp {{ reportStats.totalDiscount.toLocaleString('id-ID') }}</p>
             </div>
             <div class="bg-white p-5 rounded-xl border shadow-sm">
-              <p class="text-xs text-slate-500 font-bold uppercase">Total Keseluruhan</p>
-              <p class="text-2xl font-black text-slate-800 mt-1">Rp {{ stats.totalIncomeAll.toLocaleString('id-ID') }}</p>
+              <p class="text-xs text-slate-500 font-bold uppercase">Total Transaksi</p>
+              <p class="text-2xl font-black text-slate-800 mt-1">{{ reportStats.orderCount }} Transaksi</p>
             </div>
             <div class="bg-white p-5 rounded-xl border shadow-sm">
-              <p class="text-xs text-slate-500 font-bold uppercase">Sewa Aktif</p>
-              <p class="text-2xl font-black text-amber-600 mt-1">{{ stats.activeOrdersCount }} Sewa</p>
+              <p class="text-xs text-slate-500 font-bold uppercase">Laba Bersih</p>
+              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ reportStats.netProfit.toLocaleString('id-ID') }}</p>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div class="p-4 border-b flex items-center justify-between gap-2">
+              <div>
+                <h3 class="font-bold text-slate-800">Tabel Transaksi</h3>
+                <p class="text-xs text-slate-500">{{ reportDateRange.start || '-' }} s/d {{ reportDateRange.end || '-' }}</p>
+              </div>
+              <span class="text-xs font-semibold text-slate-500">{{ reportOrders.length }} data</span>
+            </div>
+            <div v-if="reportOrders.length === 0" class="p-10 text-center text-sm text-slate-400">Belum ada transaksi pada periode ini.</div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full min-w-[900px] text-left text-xs">
+                <thead class="bg-slate-50 border-b text-slate-600 uppercase">
+                  <tr>
+                    <th class="p-3">Tanggal</th>
+                    <th class="p-3">Nama Pelanggan</th>
+                    <th class="p-3 text-right">Subtotal</th>
+                    <th class="p-3 text-right">Diskon (Rp)</th>
+                    <th class="p-3 text-right">Total Akhir</th>
+                    <th class="p-3">Metode Bayar</th>
+                    <th class="p-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="order in reportOrders" :key="order.id" class="hover:bg-slate-50">
+                    <td class="p-3 text-slate-600">{{ order.created_at ? order.created_at.split('T')[0] : '-' }}</td>
+                    <td class="p-3 font-semibold text-slate-800">{{ order.customer_name }}</td>
+                    <td class="p-3 text-right">Rp {{ Number(order.total_price || 0).toLocaleString('id-ID') }}</td>
+                    <td class="p-3 text-right text-red-600">-Rp {{ Number(order.diskon || 0).toLocaleString('id-ID') }}</td>
+                    <td class="p-3 text-right font-bold text-emerald-700">Rp {{ (Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0)) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)).toLocaleString('id-ID') }}</td>
+                    <td class="p-3">{{ order.payment_method || '-' }}</td>
+                    <td class="p-3 text-center"><span class="rounded-full bg-slate-100 px-2 py-1 font-bold">{{ order.status }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1334,6 +1615,64 @@ onUnmounted(() => {
           </section>
         </div>
 
+        <!-- FLOATING CHECKOUT KASIR MOBILE -->
+        <div v-if="cart.length > 0" class="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_18px_rgba(15,23,42,0.18)] print:hidden">
+          <div class="px-4 py-3 flex items-center gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-[11px] text-slate-500">Total Item</p>
+              <p class="font-black text-slate-800 text-sm">{{ cartItemCount }} item <span class="text-emerald-700">· Rp {{ totalPrice.toLocaleString('id-ID') }}</span></p>
+            </div>
+            <button @click="mobileCashierCheckoutOpen = true" class="shrink-0 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow cursor-pointer">
+              Lihat Keranjang / Bayar
+            </button>
+          </div>
+        </div>
+
+        <!-- BOTTOM SHEET CHECKOUT KASIR MOBILE -->
+        <div v-if="mobileCashierCheckoutOpen && cart.length > 0" class="lg:hidden fixed inset-0 z-50 bg-slate-900/55 flex items-end" @click.self="mobileCashierCheckoutOpen = false">
+          <div class="w-full max-h-[92vh] overflow-y-auto bg-white rounded-t-2xl shadow-2xl p-5 space-y-4 mobile-sheet-enter">
+            <div class="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 class="font-bold text-slate-800">🧾 Ringkasan Transaksi Kasir</h3>
+                <p class="text-[11px] text-slate-500">{{ cartItemCount }} item dalam keranjang</p>
+              </div>
+              <button @click="mobileCashierCheckoutOpen = false" class="text-slate-500 text-sm font-semibold px-2 py-1">Tutup</button>
+            </div>
+            <div class="space-y-2 max-h-40 overflow-y-auto">
+              <div v-for="item in cart" :key="item.id" class="flex items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg text-xs">
+                <div class="min-w-0"><p class="font-bold text-slate-800 truncate">{{ item.name }}</p><p class="text-slate-500">Rp {{ Number(item.price_per_day).toLocaleString('id-ID') }} / hari</p></div>
+                <div class="flex items-center gap-2 shrink-0"><button @click="updateQty(item.id, -1)" class="w-7 h-7 bg-slate-200 rounded font-bold">-</button><span class="font-bold min-w-4 text-center">{{ item.qty }}</span><button @click="updateQty(item.id, 1)" class="w-7 h-7 bg-slate-200 rounded font-bold">+</button></div>
+              </div>
+            </div>
+            <div class="space-y-3 border-t pt-3">
+              <input v-model="customerName" type="text" placeholder="Nama Pelanggan" class="w-full border rounded-lg p-2.5 text-xs" />
+              <input v-model="customerPhone" type="text" placeholder="No. WhatsApp" class="w-full border rounded-lg p-2.5 text-xs" />
+              <input v-model="guaranteeIdentity" type="text" placeholder="Identitas Jaminan (KTP/SIM)" class="w-full border rounded-lg p-2.5 text-xs" />
+              <div class="grid grid-cols-2 gap-2"><input v-model="startDate" type="date" class="w-full border rounded-lg p-2 text-xs" /><input v-model="endDate" type="date" :min="minimumEndDate" class="w-full border rounded-lg p-2 text-xs" /></div>
+              <div class="flex justify-between bg-slate-50 p-2.5 rounded-lg text-xs"><span>Durasi Sewa</span><b>{{ totalDays }} Hari</b></div>
+            </div>
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-700">Metode Pembayaran</label>
+              <div class="grid grid-cols-3 gap-1.5"><button @click="paymentMethod = 'Tunai'" :class="paymentMethod === 'Tunai' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Tunai</button><button @click="paymentMethod = 'QRIS'" :class="paymentMethod === 'QRIS' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">QRIS</button><button @click="paymentMethod = 'Transfer Bank'" :class="paymentMethod === 'Transfer Bank' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Transfer</button></div>
+              <input v-if="paymentMethod === 'Tunai'" v-model="amountPaid" type="number" placeholder="Nominal Diterima (Rp)" class="w-full border rounded-lg p-2.5 text-xs font-bold" />
+              <label class="block text-xs font-semibold text-slate-600">Diskon Manual (Rp)</label><input v-model="diskon" type="number" min="0" step="1000" placeholder="0" class="w-full border rounded-lg p-2.5 text-xs font-bold" />
+              <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs space-y-2">
+                <p class="font-bold text-slate-700">Pilihan Pembayaran</p>
+                <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="DP 50%" /> Bayar DP (50%)</label>
+                <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="Lunas" /> Bayar Lunas (100%)</label>
+                <div class="border-t border-emerald-200 pt-2 space-y-1">
+                  <div class="flex justify-between"><span>Total Biaya Sewa:</span><b>Rp {{ totalPrice.toLocaleString('id-ID') }}</b></div>
+                  <div class="flex justify-between text-emerald-800 font-bold"><span>Minimal DP (50%):</span><span>Rp {{ minimumDp.toLocaleString('id-ID') }}</span></div>
+                  <div class="flex justify-between"><span>Sisa Pelunasan di Toko:</span><b>Rp {{ remainingBalance.toLocaleString('id-ID') }}</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-emerald-50 p-3 rounded-lg text-xs flex justify-between font-bold text-emerald-900"><span>Total Bayar</span><span class="text-sm">Rp {{ totalPrice.toLocaleString('id-ID') }}</span></div>
+            <button @click="processCheckout(false)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-xs">Proses Transaksi</button>
+            <button @click="mobileCashierCheckoutOpen = false" class="w-full bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-lg text-xs">Tutup & Pilih Barang Lagi</button>
+          </div>
+        </div>
+
       </main>
     </div>
 
@@ -1346,7 +1685,7 @@ onUnmounted(() => {
         
         <div class="bg-slate-50 p-3 rounded-xl border text-xs text-left space-y-1">
           <p><b>ID Order:</b> #{{ lastBookingData?.id }}</p>
-          <p><b>Total Tagihan:</b> Rp {{ Number(lastBookingData?.total_price).toLocaleString('id-ID') }}</p>
+          <p><b>Total Tagihan:</b> Rp {{ Math.max(0, Number(lastBookingData?.total_price || 0) - Number(lastBookingData?.diskon || 0)).toLocaleString('id-ID') }}</p>
           <p><b>Status:</b> <span class="text-amber-600 font-bold">Menunggu Konfirmasi Admin</span></p>
         </div>
 
@@ -1367,8 +1706,8 @@ onUnmounted(() => {
         
         <div class="space-y-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Terlambat (Hari)</label>
-            <input v-model="lateDaysInput" type="number" min="0" class="w-full border rounded-lg p-2 text-xs" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Denda Keterlambatan (Rp)</label>
+            <input v-model="lateFeeInput" type="number" min="0" step="1000" placeholder="0" class="w-full border rounded-lg p-2 text-xs" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Denda Kerusakan / Hilang (Rp)</label>
@@ -1382,7 +1721,7 @@ onUnmounted(() => {
         <div class="bg-slate-50 p-3 rounded-lg text-xs space-y-1">
           <div class="flex justify-between font-bold text-emerald-800">
             <span>TOTAL PEMBAYARAN AKHIR:</span>
-            <span>Rp {{ (Number(returnModalOrder.total_price) + calculatedLateFee + Number(damageFeeInput || 0)).toLocaleString('id-ID') }}</span>
+            <span>Rp {{ (Math.max(0, Number(returnModalOrder.total_price || 0) - Number(returnModalOrder.diskon || 0)) + Number(lateFeeInput || 0) + Number(damageFeeInput || 0)).toLocaleString('id-ID') }}</span>
           </div>
         </div>
 
@@ -1406,6 +1745,7 @@ onUnmounted(() => {
             <div class="flex justify-between"><span>No. HP:</span><span>{{ receiptModalData.customer_phone }}</span></div>
             <div class="flex justify-between"><span>Periode:</span><span>{{ receiptModalData.start_date }} - {{ receiptModalData.end_date }}</span></div>
             <div class="flex justify-between"><span>Pengambilan:</span><span>{{ receiptModalData.fulfillment_method || 'Ambil di Toko' }}</span></div>
+            <div class="flex justify-between"><span>Status Bayar:</span><b :class="receiptModalData.payment_status === 'DP 50%' ? 'text-amber-700' : 'text-emerald-700'">{{ receiptModalData.payment_status || 'Lunas' }}</b></div>
             <div v-if="receiptModalData.fulfillment_method === 'Antar'" class="text-left"><span>Alamat:</span> {{ receiptModalData.delivery_address || '-' }}</div>
           </div>
           <div class="border-t border-b border-dashed py-2 space-y-1">
@@ -1416,12 +1756,14 @@ onUnmounted(() => {
           </div>
           <div class="border-t border-dashed pt-2 space-y-1 text-[11px]">
             <div class="flex justify-between"><span>Subtotal Sewa:</span><span>Rp {{ Number(receiptModalData.total_price || 0).toLocaleString('id-ID') }}</span></div>
+            <div v-if="Number(receiptModalData.diskon || 0) > 0" class="flex justify-between text-red-600"><span>Diskon / Potongan:</span><span>-Rp {{ Number(receiptModalData.diskon).toLocaleString('id-ID') }}</span></div>
             <div v-if="Number(receiptModalData.late_fee || 0) > 0" class="flex justify-between"><span>Denda Keterlambatan:</span><span>Rp {{ Number(receiptModalData.late_fee).toLocaleString('id-ID') }}</span></div>
             <div v-if="Number(receiptModalData.damage_fee || 0) > 0" class="flex justify-between"><span>Denda Kerusakan/Hilang:</span><span>Rp {{ Number(receiptModalData.damage_fee).toLocaleString('id-ID') }}</span></div>
+            <div v-if="receiptModalData.payment_status === 'DP 50%'" class="flex justify-between"><span>Sisa Pelunasan:</span><span>Rp {{ Math.max(0, Number(receiptModalData.total_price || 0) - Number(receiptModalData.diskon || 0) - Number(receiptModalData.dp_amount || 0)).toLocaleString('id-ID') }}</span></div>
           </div>
           <div class="flex justify-between text-sm font-bold pt-1">
             <span>TOTAL AKHIR:</span>
-            <span class="text-emerald-700">Rp {{ (Number(receiptModalData.total_price || 0) + Number(receiptModalData.late_fee || 0) + Number(receiptModalData.damage_fee || 0)).toLocaleString('id-ID') }}</span>
+            <span class="text-emerald-700">Rp {{ (Math.max(0, Number(receiptModalData.total_price || 0) - Number(receiptModalData.diskon || 0)) + Number(receiptModalData.late_fee || 0) + Number(receiptModalData.damage_fee || 0)).toLocaleString('id-ID') }}</span>
           </div>
         </div>
 
