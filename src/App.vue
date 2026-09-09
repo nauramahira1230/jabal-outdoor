@@ -5,7 +5,7 @@ import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
 
 // PIN Akses Admin/Kasir (Bisa kamu ganti)
-const ADMIN_PIN = '1234'
+const ADMIN_PIN = 'Jabal123'
 const ADMIN_ROUTE = '/admin'
 const ADMIN_WHATSAPP = '6289517829189'
 const pinInput = ref('')
@@ -1146,7 +1146,7 @@ onUnmounted(() => {
         </div>
 
         <div>
-          <input v-model="pinInput" type="password" maxlength="6" placeholder="Masukkan PIN (Default: 1234)" @keyup.enter="loginAdmin" class="w-full border-2 rounded-xl p-2.5 text-center text-lg font-bold tracking-widest outline-none focus:border-emerald-600" />
+          <input v-model="pinInput" type="password" maxlength="8" placeholder="Masukkan password admin" @keyup.enter="loginAdmin" class="w-full border-2 rounded-xl p-2.5 text-center text-lg font-bold tracking-widest outline-none focus:border-emerald-600" />
           <p v-if="pinError" class="text-xs text-red-600 font-semibold mt-1">PIN salah! Silakan coba lagi.</p>
         </div>
 
