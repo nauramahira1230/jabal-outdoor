@@ -84,6 +84,9 @@ const lateFeeInput = ref(0)
 const damageFeeInput = ref(0)
 const returnNotesInput = ref('')
 
+// Modal Preview Bukti Transfer Admin
+const proofPreviewUrl = ref(null)
+
 // 1. Fetch Data Produk
 const fetchProducts = async () => {
   loading.value = true
@@ -1319,35 +1322,38 @@ onUnmounted(() => {
     <div v-if="currentPOV === 'admin' && isAdminLoggedIn">
       
       <!-- Sub-Header Admin Navigation -->
-      <nav class="bg-emerald-800 text-white p-3 shadow-sm print:hidden">
+      <nav class="bg-emerald-800 text-white p-2 sm:p-3 shadow-sm print:hidden sticky top-0 z-30">
         <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-          <div class="flex items-center gap-2">
-            <img src="/logo-jabal.png" alt="Logo Jabal Outdoor" class="w-9 h-9 rounded-md object-cover border border-emerald-600" />
-            <h2 class="font-bold text-sm">Dashboard Admin Kasir</h2>
+          <div class="flex items-center justify-between w-full md:w-auto">
+            <div class="flex items-center gap-2">
+              <img src="/logo-jabal.png" alt="Logo Jabal Outdoor" class="w-8 h-8 rounded-md object-cover border border-emerald-600" />
+              <h2 class="font-bold text-xs sm:text-sm">Dashboard Admin Kasir</h2>
+            </div>
           </div>
-          <div class="flex bg-emerald-900/60 p-1 rounded-lg border border-emerald-700 space-x-1 text-xs">
-            <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-3 py-1.5 rounded-md cursor-pointer">
+          
+          <div class="flex overflow-x-auto w-full md:w-auto pb-1 md:pb-0 no-scrollbar bg-emerald-900/60 p-1 rounded-lg border border-emerald-700 space-x-1 text-[11px] sm:text-xs">
+            <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-2.5 py-1.5 rounded-md cursor-pointer shrink-0">
               🛒 Kasir Toko
             </button>
-            <button @click="activeTab = 'online_orders'" :class="activeTab === 'online_orders' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-3 py-1.5 rounded-md cursor-pointer flex items-center gap-1">
+            <button @click="activeTab = 'online_orders'" :class="activeTab === 'online_orders' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-2.5 py-1.5 rounded-md cursor-pointer flex items-center gap-1 shrink-0">
               📥 Booking Online
               <span v-if="stats.pendingCount > 0" class="bg-amber-400 text-slate-900 font-black text-[10px] px-1.5 rounded-full">{{ stats.pendingCount }}</span>
             </button>
-            <button @click="activeTab = 'orders'" :class="activeTab === 'orders' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-3 py-1.5 rounded-md cursor-pointer flex items-center gap-1">
+            <button @click="activeTab = 'orders'" :class="activeTab === 'orders' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-2.5 py-1.5 rounded-md cursor-pointer flex items-center gap-1 shrink-0">
               📜 Riwayat Sewa
               <span v-if="stats.overdueOrdersCount > 0" class="bg-red-500 text-white font-bold text-[10px] px-1.5 rounded-full">{{ stats.overdueOrdersCount }}</span>
             </button>
-            <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-3 py-1.5 rounded-md cursor-pointer">
-              📊 Laporan Keuangan
+            <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-2.5 py-1.5 rounded-md cursor-pointer shrink-0">
+              📊 Laporan
             </button>
-            <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-3 py-1.5 rounded-md cursor-pointer">
-              📦 Stok Inventaris
+            <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-emerald-600 font-bold' : 'text-emerald-200'" class="px-2.5 py-1.5 rounded-md cursor-pointer shrink-0">
+              📦 Stok
             </button>
           </div>
         </div>
       </nav>
 
-      <main class="max-w-7xl mx-auto mt-6 px-4 print:hidden">
+      <main class="max-w-7xl mx-auto mt-4 sm:mt-6 px-3 sm:px-4 mb-20 md:mb-8 print:hidden">
         
         <!-- TAB ADMIN 1: KASIR TRANSAKSI OFFLINE -->
         <div v-if="activeTab === 'pos'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1482,74 +1488,78 @@ onUnmounted(() => {
         </div>
 
         <!-- TAB ADMIN 2: BOOKING ONLINE MASUK (APPROVAL) -->
-        <div v-if="activeTab === 'online_orders'" class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+        <div v-if="activeTab === 'online_orders'" class="bg-white p-3 sm:p-6 rounded-xl shadow-sm border space-y-4">
           <div class="flex justify-between items-center border-b pb-3">
             <div>
-              <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                <span>📥</span> Booking Online Menunggu Konfirmasi
+              <h3 class="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-1.5">
+                <span>📥</span> Booking Online
               </h3>
-              <p class="text-xs text-slate-500">Konfirmasi reservasi pelanggan yang masuk dari website</p>
+              <p class="text-[11px] sm:text-xs text-slate-500">Konfirmasi reservasi pelanggan masuk</p>
             </div>
-            <button @click="fetchOrders" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-md border">🔄 Refresh Data</button>
+            <button @click="fetchOrders" class="text-xs bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg border font-semibold">🔄 Refresh</button>
           </div>
 
-          <div v-if="pendingOnlineOrders.length === 0" class="text-center py-10 text-slate-400 text-sm">
+          <div v-if="pendingOnlineOrders.length === 0" class="text-center py-10 text-slate-400 text-xs sm:text-sm">
             Belum ada booking online baru yang masuk.
           </div>
 
           <div v-else class="space-y-4">
-            <div v-for="order in pendingOnlineOrders" :key="order.id" class="border rounded-xl p-4 bg-slate-50 flex flex-col md:flex-row justify-between gap-4">
-              <div class="space-y-2 text-xs flex-1">
-                <div class="flex items-center gap-2">
+            <div v-for="order in pendingOnlineOrders" :key="order.id" class="border rounded-xl p-3.5 sm:p-4 bg-slate-50 flex flex-col md:flex-row justify-between gap-4 shadow-sm">
+              <div class="space-y-2.5 text-xs flex-1">
+                <div class="flex items-center justify-between">
                   <span class="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">Menunggu Approval</span>
-                  <span class="text-slate-400">ID: #{{ order.id }}</span>
+                  <span class="text-slate-400 font-mono text-[11px]">#{{ order.id }}</span>
                 </div>
-                <h4 class="font-bold text-sm text-slate-800">{{ order.customer_name }} ({{ order.customer_phone }})</h4>
-                <p class="text-slate-600">🗓️ Periode: <b>{{ order.start_date }} s/d {{ order.end_date }}</b> ({{ order.total_days }} Hari)</p>
+                
+                <div>
+                  <h4 class="font-bold text-sm text-slate-800">{{ order.customer_name }}</h4>
+                  <a :href="`https://wa.me/${order.customer_phone.replace(/[^0-9]/g, '')}`" target="_blank" class="text-emerald-700 font-semibold hover:underline block text-[11px] mt-0.5">
+                    📞 {{ order.customer_phone }}
+                  </a>
+                </div>
+
+                <div class="bg-white p-2.5 rounded-lg border text-slate-700 space-y-1">
+                  <p class="text-[11px]"><b>🗓️ Periode Sewa:</b> {{ order.start_date }} s/d {{ order.end_date }} (<b>{{ order.total_days }} Hari</b>)</p>
+                  <p class="text-[11px]"><b>🚚 Pengambilan:</b> <span class="font-bold text-emerald-800">{{ order.fulfillment_method || 'Ambil di Toko' }}</span></p>
+                  <p v-if="order.fulfillment_method === 'Antar'" class="text-[11px] bg-amber-50 p-1.5 rounded border border-amber-200 text-amber-900 mt-1">
+                    <b>Alamat:</b> {{ order.delivery_address || '-' }}
+                  </p>
+                </div>
                 
                 <div class="bg-white p-2.5 rounded-lg border space-y-1">
-                  <p class="font-bold text-slate-700">Daftar Alat Dibooking:</p>
-                  <div v-for="item in order.order_items" :key="item.id" class="flex justify-between text-slate-600">
-                    <span>- {{ item.product_name }} x{{ item.quantity }}</span>
+                  <p class="font-bold text-slate-800 border-b pb-1">Daftar Alat Dibooking:</p>
+                  <div v-for="item in order.order_items" :key="item.id" class="flex justify-between text-slate-600 text-[11px]">
+                    <span>• {{ item.product_name }} <b>x{{ item.quantity }}</b></span>
                     <span>Rp {{ Number(item.subtotal).toLocaleString('id-ID') }}</span>
                   </div>
                 </div>
 
-                <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-100 space-y-1 text-slate-700">
-                  <p><b>Metode Pembayaran:</b> {{ order.payment_method || '-' }}</p>
-                  <p><b>Pengambilan:</b> {{ order.fulfillment_method || 'Ambil di Toko' }}</p>
-                  <p v-if="order.fulfillment_method === 'Antar'" class="break-words"><b>Alamat Antar:</b> {{ order.delivery_address || '-' }}</p>
-                  <p v-if="order.fulfillment_method === 'Antar'" class="text-amber-700"><b>Catatan:</b> Estimasi biaya GoSend belum termasuk dan akan dikonfirmasi melalui WhatsApp.</p>
-                </div>
-
-                <div class="bg-white p-2.5 rounded-lg border space-y-1 text-slate-700">
-                  <div class="flex justify-between"><span>Subtotal Sewa:</span><span>Rp {{ Number(order.total_price || 0).toLocaleString('id-ID') }}</span></div>
-                  <div v-if="Number(order.diskon || 0) > 0" class="flex justify-between text-red-600"><span>Diskon / Potongan:</span><span>-Rp {{ Number(order.diskon).toLocaleString('id-ID') }}</span></div>
-                  <div v-if="Number(order.late_fee || 0) > 0" class="flex justify-between"><span>Denda Keterlambatan:</span><span>Rp {{ Number(order.late_fee).toLocaleString('id-ID') }}</span></div>
-                  <div v-if="Number(order.damage_fee || 0) > 0" class="flex justify-between"><span>Denda Kerusakan/Hilang:</span><span>Rp {{ Number(order.damage_fee).toLocaleString('id-ID') }}</span></div>
-                  <div class="flex justify-between border-t pt-1 text-sm font-black text-emerald-800">
-                    <span>Total Akhir:</span>
+                <div class="bg-emerald-50/80 p-2.5 rounded-lg border border-emerald-100 space-y-1 text-slate-800 text-[11px]">
+                  <div class="flex justify-between"><span>Metode Bayar:</span><b class="uppercase">{{ order.payment_method || '-' }}</b></div>
+                  <div class="flex justify-between"><span>Status Pembayaran:</span><b class="text-emerald-700">{{ order.payment_status || 'Lunas' }}</b></div>
+                  <div class="flex justify-between border-t border-emerald-200/60 pt-1 text-xs font-black text-emerald-900">
+                    <span>Total Tagihan:</span>
                     <span>Rp {{ (Math.max(0, Number(order.total_price || 0) - Number(order.diskon || 0)) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)).toLocaleString('id-ID') }}</span>
                   </div>
                 </div>
               </div>
 
               <!-- Bukti Transfer & Aksi -->
-              <div class="w-full md:w-56 space-y-2 flex flex-col justify-between border-t md:border-t-0 md:border-l pt-3 md:pt-0 md:pl-4">
+              <div class="w-full md:w-56 space-y-3 flex flex-col justify-between border-t md:border-t-0 md:border-l pt-3 md:pt-0 md:pl-4">
                 <div>
-                  <p class="text-xs font-bold text-slate-700 mb-1">Bukti Pembayaran:</p>
-                  <a v-if="order.proof_of_payment" :href="order.proof_of_payment" target="_blank" class="block text-center bg-blue-50 text-blue-700 border border-blue-200 rounded-lg p-2 text-xs font-semibold hover:underline">
-                    🖼️ Lihat Foto Bukti
-                  </a>
-                  <span v-else class="text-xs text-slate-400 italic block">Tidak ada lampiran foto</span>
+                  <p class="text-[11px] font-bold text-slate-700 mb-1">Bukti Pembayaran:</p>
+                  <button v-if="order.proof_of_payment" @click="proofPreviewUrl = order.proof_of_payment" class="w-full text-center bg-blue-50 text-blue-700 border border-blue-200 rounded-lg py-2 px-3 text-xs font-semibold hover:bg-blue-100 transition cursor-pointer flex items-center justify-center gap-1.5">
+                    <span>🖼️</span> Lihat Foto Bukti
+                  </button>
+                  <span v-else class="text-[11px] text-slate-400 italic block bg-slate-100 p-2 rounded text-center">Tidak ada lampiran foto</span>
                 </div>
 
-                <div class="space-y-1.5 pt-2">
-                  <button @click="approveOnlineOrder(order)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 rounded-lg text-xs cursor-pointer">
-                    ✅ Setujui & Potong Stok
+                <div class="grid grid-cols-2 md:grid-cols-1 gap-2 pt-1">
+                  <button @click="approveOnlineOrder(order)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg text-xs shadow cursor-pointer">
+                    ✅ Setujui
                   </button>
-                  <button @click="rejectOnlineOrder(order)" class="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-1.5 rounded-lg text-xs cursor-pointer">
-                    ❌ Tolak Booking
+                  <button @click="rejectOnlineOrder(order)" class="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 rounded-lg text-xs cursor-pointer border border-red-200">
+                    ❌ Tolak
                   </button>
                 </div>
               </div>
@@ -1558,25 +1568,29 @@ onUnmounted(() => {
         </div>
 
         <!-- TAB ADMIN 3: RIWAYAT SEWA -->
-        <div v-if="activeTab === 'orders'" class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
-          <div class="flex flex-col md:flex-row justify-between items-md-center gap-3 border-b pb-3">
-            <h3 class="font-bold text-slate-800 text-base">📜 Semua Riwayat Transaksi</h3>
-            <div class="flex flex-wrap gap-2">
-              <input v-model="searchOrder" type="text" placeholder="🔍 Cari Nama / No HP..." class="border rounded-lg px-3 py-1 text-xs outline-none" />
-              <select v-model="statusOrderFilter" class="border rounded-lg px-2 py-1 text-xs">
+        <div v-if="activeTab === 'orders'" class="bg-white p-3 sm:p-6 rounded-xl shadow-sm border space-y-4">
+          <div class="flex flex-col gap-3 border-b pb-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-sm sm:text-base">📜 Riwayat Transaksi</h3>
+              <button @click="resetOrderHistory" :disabled="isResettingOrders" class="bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-700 font-bold px-2.5 py-1 rounded-lg text-xs border border-red-200">
+                {{ isResettingOrders ? 'Resetting...' : '🗑️ Reset' }}
+              </button>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input v-model="searchOrder" type="text" placeholder="🔍 Cari Nama / No HP..." class="border rounded-lg px-3 py-1.5 text-xs outline-none w-full" />
+              <select v-model="statusOrderFilter" class="border rounded-lg px-2 py-1.5 text-xs w-full bg-white">
                 <option value="">Semua Status</option>
                 <option value="Aktif">Sedang Sewa (Aktif)</option>
                 <option value="Pending">Menunggu Approval</option>
                 <option value="Terlambat">🚨 Terlambat</option>
                 <option value="Selesai">Selesai</option>
               </select>
-              <button @click="resetOrderHistory" :disabled="isResettingOrders" class="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-bold px-3 py-1 rounded-lg text-xs border border-red-200">
-                {{ isResettingOrders ? 'Mereset...' : '🗑️ Reset Riwayat' }}
-              </button>
             </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <!-- DESKTOP TABLE VIEW -->
+          <div class="hidden md:block overflow-x-auto">
             <table class="w-full text-left text-sm border-collapse">
               <thead>
                 <tr class="bg-slate-50 border-b text-slate-600 text-xs uppercase">
@@ -1636,6 +1650,70 @@ onUnmounted(() => {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- MOBILE CARD VIEW -->
+          <div class="block md:hidden space-y-3">
+            <div v-if="filteredOrders.length === 0" class="text-center py-8 text-slate-400 text-xs">
+              Tidak ada data transaksi ditemukan.
+            </div>
+
+            <div v-for="item in filteredOrders" :key="item.id" class="border rounded-xl p-3.5 bg-slate-50/70 space-y-3 shadow-sm">
+              <div class="flex items-start justify-between gap-2 border-b pb-2">
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm leading-snug">{{ item.customer_name }}</h4>
+                  <p class="text-xs text-slate-500">{{ item.customer_phone }}</p>
+                </div>
+                <span :class="item.status === 'Aktif' ? 'bg-amber-100 text-amber-800 border-amber-200' : (item.status === 'Selesai' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-200 text-slate-700 border-slate-300')" class="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0">
+                  {{ item.status }}
+                </span>
+              </div>
+
+              <div class="space-y-1.5 text-xs text-slate-600">
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500">Tipe Order:</span>
+                  <span :class="item.order_type === 'online' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'" class="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+                    {{ item.order_type || 'offline' }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500">Periode Sewa:</span>
+                  <span class="font-semibold text-slate-700">{{ item.start_date }} s/d {{ item.end_date }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500">Status Tenggat:</span>
+                  <span :class="getDueDateStatus(item).color" class="text-[10px] px-2 py-0.5 rounded-full border">
+                    {{ getDueDateStatus(item).label }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500">Pelunasan:</span>
+                  <span :class="item.payment_status === 'DP 50%' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'" class="text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {{ item.payment_status || 'Lunas' }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between pt-1 border-t text-sm font-bold">
+                  <span class="text-slate-700">Total Biaya:</span>
+                  <span class="text-emerald-700">Rp {{ (Math.max(0, Number(item.total_price || 0) - Number(item.diskon || 0)) + Number(item.late_fee || 0) + Number(item.damage_fee || 0)).toLocaleString('id-ID') }}</span>
+                </div>
+              </div>
+
+              <!-- Action Buttons for Mobile -->
+              <div class="grid grid-cols-2 gap-1.5 pt-1 border-t">
+                <button @click="receiptModalData = item" class="w-full bg-slate-200 text-slate-700 font-bold py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                  🧾 Struk
+                </button>
+                <button v-if="item.status === 'Aktif'" @click="sendReminderWhatsApp(item)" class="w-full bg-emerald-600 text-white font-bold py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                  📲 Ingatkan
+                </button>
+                <button v-if="item.status === 'Aktif'" @click="openReturnModal(item)" class="w-full col-span-2 bg-amber-600 text-white font-bold py-1.5 rounded-lg text-xs">
+                  🔄 Proses Pengembalian
+                </button>
+                <button v-if="item.payment_status === 'DP 50%'" @click="settleOrder(item)" class="w-full col-span-2 bg-emerald-700 text-white font-bold py-1.5 rounded-lg text-xs">
+                  💳 Pelunasan Sisa
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1899,6 +1977,14 @@ onUnmounted(() => {
       </main>
     </div>
 
+    <!-- MODAL PREVIEW BUKTI PEMBAYARAN ADMIN -->
+    <div v-if="proofPreviewUrl" class="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" @click.self="proofPreviewUrl = null">
+      <div class="relative max-w-xl w-full flex items-center justify-center">
+        <img :src="proofPreviewUrl" alt="Bukti pembayaran" class="max-w-full max-h-[85vh] object-contain rounded-xl bg-white p-2 shadow-2xl" />
+        <button @click="proofPreviewUrl = null" type="button" aria-label="Tutup Bukti" class="absolute -top-3 -right-3 w-9 h-9 rounded-full bg-white text-slate-700 text-2xl leading-none shadow-lg cursor-pointer">×</button>
+      </div>
+    </div>
+
     <!-- MODAL SUKSES BOOKING ONLINE (PELANGGAN) -->
     <div v-if="bookingSuccessModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4">
@@ -2031,6 +2117,15 @@ onUnmounted(() => {
 </template>
 
 <style>
+/* CSS Helper untuk Sembunyikan Scrollbar Navigasi Admin di Mobile */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @keyframes splash-logo-in {
   0% { opacity: 0; transform: scale(0.7); }
   70% { opacity: 1; transform: scale(1.05); }
