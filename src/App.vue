@@ -944,10 +944,11 @@ onUnmounted(() => {
               <select v-model="selectedCategoryFilter" class="border rounded-lg px-2 py-1.5 text-xs">
                 <option value="">Semua Kategori</option>
                 <option value="Tenda">Tenda</option>
-                <option value="Carrier/Tas">Carrier / Tas</option>
-                <option value="Masak">Alat Masak</option>
-                <option value="Sleeping Gear">Sleeping Gear</option>
-                <option value="Lampu/Elektronik">Lampu / Elektronik</option>
+                <option value="Tas Gunung">Tas Gunung</option>
+                <option value="Alat Masak">Alat Masak</option>
+                <option value="Kursi dan Meja">Kursi dan Meja</option>
+                <option value="Lampu">Lampu</option>
+                <option value="Lainnya">Lainnya</option>
               </select>
             </div>
           </div>
@@ -956,7 +957,7 @@ onUnmounted(() => {
             Alat camping tidak ditemukan.
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
             <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between hover:shadow-md transition">
               <div>
                 <div class="w-full h-56 sm:h-64 rounded-lg mb-3 bg-slate-50 flex items-center justify-center overflow-hidden">
@@ -1202,10 +1203,11 @@ onUnmounted(() => {
                 <select v-model="selectedCategoryFilter" class="bg-white border rounded-lg px-2 py-1.5 text-xs">
                   <option value="">Semua Kategori</option>
                   <option value="Tenda">Tenda</option>
-                  <option value="Carrier/Tas">Carrier / Tas</option>
-                  <option value="Masak">Alat Masak</option>
-                  <option value="Sleeping Gear">Sleeping Gear</option>
-                  <option value="Lampu/Elektronik">Lampu / Elektronik</option>
+                  <option value="Tas Gunung">Tas Gunung</option>
+                  <option value="Alat Masak">Alat Masak</option>
+                  <option value="Kursi dan Meja">Kursi dan Meja</option>
+                  <option value="Lampu">Lampu</option>
+                  <option value="Lainnya">Lainnya</option>
                 </select>
               </div>
             </div>
@@ -1574,10 +1576,11 @@ onUnmounted(() => {
               <input v-model="newProduct.name" type="text" placeholder="Nama Peralatan" class="w-full border rounded-lg p-2 text-xs" required />
               <select v-model="newProduct.category" class="w-full border rounded-lg p-2 text-xs">
                 <option value="Tenda">Tenda</option>
-                <option value="Carrier/Tas">Carrier / Tas</option>
-                <option value="Masak">Alat Masak / Kompor</option>
-                <option value="Sleeping Gear">Sleeping Bag / Matras</option>
-                <option value="Lampu/Elektronik">Lampu / Elektronik</option>
+                <option value="Tas Gunung">Tas Gunung</option>
+                <option value="Alat Masak">Alat Masak</option>
+                <option value="Kursi dan Meja">Kursi dan Meja</option>
+                <option value="Lampu">Lampu</option>
+                <option value="Lainnya">Lainnya</option>
               </select>
               <textarea v-model="newProduct.description" rows="3" placeholder="Deskripsi barang (contoh: tenda nyaman untuk 4 orang)" class="w-full border rounded-lg p-2 text-xs"></textarea>
               <textarea v-model="newProduct.specifications" rows="3" placeholder="Spesifikasi & kelengkapan (contoh: ukuran, kapasitas, isi paket)" class="w-full border rounded-lg p-2 text-xs"></textarea>
