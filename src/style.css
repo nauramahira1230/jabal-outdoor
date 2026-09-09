@@ -24,18 +24,18 @@ body {
 }
 
 .customer-header {
-	position: absolute;
+	position: sticky;
 	top: 0;
 	left: 0;
 	right: 0;
 	z-index: 40;
 	padding: 1.25rem 1rem;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+	background: #354b3d;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	transition: background-color 220ms ease, padding 220ms ease, box-shadow 220ms ease;
 }
 
 .customer-header-scrolled {
-	position: fixed;
 	padding-top: 0.75rem;
 	padding-bottom: 0.75rem;
 	background: rgba(53, 71, 59, 0.96);
@@ -100,8 +100,8 @@ body {
 	position: relative;
 	z-index: 1;
 	width: 100%;
-	padding-top: 11rem;
-	padding-bottom: 6rem;
+	padding-top: 5.5rem;
+	padding-bottom: 4.5rem;
 	color: #fff;
 }
 
@@ -492,7 +492,7 @@ body {
 	}
 
 	.customer-hero-content {
-		padding-top: 5.75rem;
+		padding-top: 1.5rem;
 		padding-bottom: 1rem;
 	}
 

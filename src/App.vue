@@ -1081,10 +1081,6 @@ onUnmounted(() => {
         <!-- Katalog Alat Camping -->
         <div class="customer-catalog max-w-7xl mx-auto px-5 sm:px-8 space-y-5">
           <div class="customer-catalog-toolbar">
-            <div>
-              <p class="customer-section-kicker">THE COLLECTION</p>
-              <h2 class="customer-section-title">Perlengkapan untuk <em>perjalanan besar.</em></h2>
-            </div>
             <div class="customer-filters">
               <label class="customer-search">
                 <span aria-hidden="true">⌕</span>
