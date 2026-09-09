@@ -426,11 +426,17 @@ const resetCashierCheckout = () => {
   paymentStatus.value = 'Lunas'
 }
 
+// Hitung Otomatis Kembalian Kasir (Sesuai Tagihan DP / Pelunasan)
 const changeAmount = computed(() => {
   if (paymentMethod.value !== 'Tunai') return 0
   const change = Number(amountPaid.value) - selectedPaymentAmount.value
   return change > 0 ? change : 0
 })
+
+// Quick Fill Nominal Pas / Uang Pecahan
+const setExactAmount = () => {
+  amountPaid.value = selectedPaymentAmount.value
+}
 
 // Upload Bukti Pembayaran Online
 const handleProofChange = (e) => { proofFile.value = e.target.files[0] }
@@ -1394,7 +1400,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Form Checkout Kasir -->
+          <!-- Form Checkout Kasir Desktop -->
           <div v-if="cart.length > 0" class="hidden lg:block bg-white p-5 rounded-xl shadow-sm border space-y-4 h-fit lg:sticky lg:top-4 self-start">
             <h3 class="text-base font-bold text-slate-800 border-b pb-2">🧾 Transaksi Kasir</h3>
             
@@ -1438,13 +1444,27 @@ onUnmounted(() => {
                   <button @click="paymentMethod = 'QRIS'" :class="paymentMethod === 'QRIS' ? 'bg-emerald-700 text-white' : 'bg-slate-100'" class="py-1 text-xs rounded-lg font-semibold">📱 QRIS</button>
                 </div>
 
-                <div v-if="paymentMethod === 'Tunai'" class="space-y-1 pt-1">
-                  <input v-model="amountPaid" type="number" placeholder="Nominal Diterima (Rp)" class="w-full border rounded-lg p-2 text-xs font-bold" />
-                  <div class="flex justify-between bg-slate-100 p-2 rounded-lg text-xs">
-                    <span>Kembalian:</span>
-                    <span class="font-bold text-slate-800">Rp {{ changeAmount.toLocaleString('id-ID') }}</span>
+                <div v-if="paymentMethod === 'Tunai'" class="space-y-2 pt-1">
+                  <div class="flex justify-between items-center">
+                    <label class="text-[11px] font-semibold text-slate-600">Nominal Diterima (Rp)</label>
+                    <button type="button" @click="setExactAmount" class="text-[10px] text-emerald-700 hover:underline font-bold">Uang Pas</button>
+                  </div>
+                  <input v-model="amountPaid" type="number" placeholder="Contoh: 100000" class="w-full border rounded-lg p-2 text-xs font-bold focus:border-emerald-600 outline-none" />
+                  
+                  <!-- KEMBALIAN DESKTOP FITUR KASIR -->
+                  <div :class="Number(amountPaid) >= selectedPaymentAmount ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'" class="p-2.5 rounded-lg border text-xs space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="font-bold">Kembalian:</span>
+                      <span class="text-sm font-black">
+                        Rp {{ changeAmount.toLocaleString('id-ID') }}
+                      </span>
+                    </div>
+                    <p v-if="Number(amountPaid) > 0 && Number(amountPaid) < selectedPaymentAmount" class="text-[10px] text-red-600 font-bold">
+                      ⚠️ Uang kurang Rp {{ (selectedPaymentAmount - Number(amountPaid)).toLocaleString('id-ID') }}
+                    </p>
                   </div>
                 </div>
+
                 <div v-else-if="paymentMethod === 'Transfer Bank'" class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 text-[11px] text-emerald-900 space-y-1">
                   <p class="font-bold">Pembayaran Bisa Melalui:</p>
                   <p><b>BSI:</b> 1045152761 a.n. Mahmud Rosyad Al Farizi</p>
@@ -1952,11 +1972,39 @@ onUnmounted(() => {
               <div class="grid grid-cols-2 gap-2"><input v-model="startDate" type="date" class="w-full border rounded-lg p-2 text-xs" /><input v-model="endDate" type="date" :min="minimumEndDate" class="w-full border rounded-lg p-2 text-xs" /></div>
               <div class="flex justify-between bg-slate-50 p-2.5 rounded-lg text-xs"><span>Durasi Sewa</span><b>{{ totalDays }} Hari</b></div>
             </div>
+            
             <div class="space-y-2">
               <label class="block text-xs font-bold text-slate-700">Metode Pembayaran</label>
-              <div class="grid grid-cols-3 gap-1.5"><button @click="paymentMethod = 'Tunai'" :class="paymentMethod === 'Tunai' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Tunai</button><button @click="paymentMethod = 'QRIS'" :class="paymentMethod === 'QRIS' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">QRIS</button><button @click="paymentMethod = 'Transfer Bank'" :class="paymentMethod === 'Transfer Bank' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Transfer</button></div>
-              <input v-if="paymentMethod === 'Tunai'" v-model="amountPaid" type="number" placeholder="Nominal Diterima (Rp)" class="w-full border rounded-lg p-2.5 text-xs font-bold" />
-              <label class="block text-xs font-semibold text-slate-600">Diskon Manual (Rp)</label><input v-model="diskon" type="number" min="0" step="1000" placeholder="0" class="w-full border rounded-lg p-2.5 text-xs font-bold" />
+              <div class="grid grid-cols-3 gap-1.5">
+                <button @click="paymentMethod = 'Tunai'" :class="paymentMethod === 'Tunai' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Tunai</button>
+                <button @click="paymentMethod = 'QRIS'" :class="paymentMethod === 'QRIS' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">QRIS</button>
+                <button @click="paymentMethod = 'Transfer Bank'" :class="paymentMethod === 'Transfer Bank' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700'" class="py-2 rounded-lg text-[11px] font-bold">Transfer</button>
+              </div>
+
+              <!-- INPUT TUNAI & KEMBALIAN AUTOMATIS MOBILE -->
+              <div v-if="paymentMethod === 'Tunai'" class="space-y-2 pt-1">
+                <div class="flex justify-between items-center">
+                  <label class="text-[11px] font-semibold text-slate-600">Nominal Diterima (Rp)</label>
+                  <button type="button" @click="setExactAmount" class="text-[10px] text-emerald-700 hover:underline font-bold">Uang Pas</button>
+                </div>
+                <input v-model="amountPaid" type="number" placeholder="Contoh: 100000" class="w-full border rounded-lg p-2.5 text-xs font-bold focus:border-emerald-600 outline-none" />
+                
+                <div :class="Number(amountPaid) >= selectedPaymentAmount ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'" class="p-2.5 rounded-lg border text-xs space-y-1">
+                  <div class="flex justify-between items-center">
+                    <span class="font-bold">Kembalian:</span>
+                    <span class="text-sm font-black">
+                      Rp {{ changeAmount.toLocaleString('id-ID') }}
+                    </span>
+                  </div>
+                  <p v-if="Number(amountPaid) > 0 && Number(amountPaid) < selectedPaymentAmount" class="text-[10px] text-red-600 font-bold">
+                    ⚠️ Uang kurang Rp {{ (selectedPaymentAmount - Number(amountPaid)).toLocaleString('id-ID') }}
+                  </p>
+                </div>
+              </div>
+
+              <label class="block text-xs font-semibold text-slate-600">Diskon Manual (Rp)</label>
+              <input v-model="diskon" type="number" min="0" step="1000" placeholder="0" class="w-full border rounded-lg p-2.5 text-xs font-bold" />
+              
               <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-xs space-y-2">
                 <p class="font-bold text-slate-700">Pilihan Pembayaran</p>
                 <label class="flex items-center gap-2"><input v-model="paymentStatus" type="radio" value="DP 50%" /> Bayar DP (50%)</label>
@@ -1968,6 +2016,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+
             <div class="bg-emerald-50 p-3 rounded-lg text-xs flex justify-between font-bold text-emerald-900"><span>Total Bayar</span><span class="text-sm">Rp {{ totalPrice.toLocaleString('id-ID') }}</span></div>
             <button @click="processCheckout(false)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 rounded-lg text-xs">Proses Transaksi</button>
             <button @click="mobileCashierCheckoutOpen = false" class="w-full bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-lg text-xs">Tutup & Pilih Barang Lagi</button>
