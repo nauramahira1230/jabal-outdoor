@@ -628,6 +628,16 @@ const resetOrderHistory = async () => {
     const { error: ordersError } = await supabase.from('orders').delete().in('id', orderIds)
     if (ordersError) throw ordersError
 
+    // RLS can silently skip deletes when no DELETE policy exists, so verify persistence.
+    const { data: remainingOrders, error: verifyError } = await supabase
+      .from('orders')
+      .select('id')
+      .in('id', orderIds)
+    if (verifyError) throw verifyError
+    if (remainingOrders?.length) {
+      throw new Error('Data belum terhapus. Periksa kebijakan DELETE tabel orders di Supabase.')
+    }
+
     orders.value = []
     await fetchProducts()
     alert('Riwayat sewa dan laporan keuangan berhasil direset.')

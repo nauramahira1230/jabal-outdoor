@@ -15,3 +15,17 @@ alter table public.products
 
 -- Refresh schema cache PostgREST setelah perubahan struktur.
 notify pgrst, 'reload schema';
+
+-- Izinkan tombol Reset Riwayat menghapus data transaksi melalui client aplikasi.
+-- Jalankan bagian ini jika request DELETE sebelumnya tidak menghapus baris karena RLS.
+drop policy if exists "Allow public delete order items" on public.order_items;
+create policy "Allow public delete order items"
+  on public.order_items for delete
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Allow public delete orders" on public.orders;
+create policy "Allow public delete orders"
+  on public.orders for delete
+  to anon, authenticated
+  using (true);
