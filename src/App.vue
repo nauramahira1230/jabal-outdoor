@@ -15,6 +15,7 @@ const isAdminLoggingIn = ref(false)
 // Mode POV: 'customer' (Pelanggan) atau 'admin' (Kasir/Admin)
 const currentPOV = ref('customer')
 const isAdminLoggedIn = ref(false)
+const isCustomerScrolled = ref(false)
 const showSplash = ref(true)
 const splashVisible = ref(true)
 let splashTimer
@@ -47,6 +48,8 @@ const selectedCategoryFilter = ref('')
 const searchOrder = ref('')
 const statusOrderFilter = ref('')
 const reportPeriod = ref('month')
+const reportMonth = ref(new Date().getMonth() + 1)
+const reportYear = ref(new Date().getFullYear())
 const reportStartDate = ref('')
 const reportEndDate = ref('')
 
@@ -258,8 +261,25 @@ const reportDateRange = computed(() => {
   if (reportPeriod.value === 'custom') {
     return { start: reportStartDate.value, end: reportEndDate.value }
   }
+  if (reportPeriod.value === 'year') {
+    return { start: `${reportYear.value}-01-01`, end: `${reportYear.value}-12-31` }
+  }
 
-  return { start: todayString.slice(0, 7) + '-01', end: todayString }
+  const month = String(reportMonth.value).padStart(2, '0')
+  const lastDay = new Date(Number(reportYear.value), Number(reportMonth.value), 0).getDate()
+  return {
+    start: `${reportYear.value}-${month}-01`,
+    end: `${reportYear.value}-${month}-${String(lastDay).padStart(2, '0')}`
+  }
+})
+
+const reportYears = computed(() => {
+  const years = new Set([new Date().getFullYear()])
+  orders.value.forEach(order => {
+    const year = Number(order.created_at?.slice(0, 4))
+    if (year) years.add(year)
+  })
+  return [...years].sort((a, b) => b - a)
 })
 
 const reportOrders = computed(() => {
@@ -293,6 +313,32 @@ const reportStats = computed(() => {
     cashIncome,
     orderCount: reportOrders.value.length
   }
+})
+
+const monthlyReport = computed(() => {
+  const months = Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    label: new Date(reportYear.value, index, 1).toLocaleDateString('id-ID', { month: 'long' }),
+    income: 0,
+    discount: 0,
+    orderCount: 0
+  }))
+
+  orders.value.forEach(order => {
+    const orderDate = order.created_at?.split('T')[0]
+    if (!orderDate || Number(orderDate.slice(0, 4)) !== Number(reportYear.value)) return
+    if (order.status === 'Ditolak' || order.status === 'Menunggu Konfirmasi') return
+
+    const month = Number(orderDate.slice(5, 7)) - 1
+    if (month < 0 || month > 11) return
+    const discount = Number(order.diskon || 0)
+    const total = Math.max(0, Number(order.total_price || 0) - discount) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)
+    months[month].income += total
+    months[month].discount += discount
+    months[month].orderCount++
+  })
+
+  return months
 })
 
 // Keranjang
@@ -770,21 +816,99 @@ const exportToExcel = () => {
 }
 
 const exportToPDF = () => {
-  const doc = new jsPDF()
-  doc.setFontSize(16)
-  doc.text('JABAL OUTDOOR STORE - LAPORAN KEUANGAN', 14, 15)
-  doc.setFontSize(10)
-  doc.text(`Periode: ${reportDateRange.value.start || '-'} s/d ${reportDateRange.value.end || '-'}`, 14, 23)
-  doc.text(`Total Pendapatan: Rp ${reportStats.value.totalIncome.toLocaleString('id-ID')}`, 14, 29)
-  doc.text(`Total Diskon: Rp ${reportStats.value.totalDiscount.toLocaleString('id-ID')}`, 14, 35)
-  doc.text(`Total Transaksi: ${reportStats.value.orderCount}`, 14, 41)
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const margin = 12
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const tableWidth = pageWidth - (margin * 2)
+  const rowHeight = 8
+  const columns = [
+    { label: 'No', width: 10, align: 'center' },
+    { label: 'Tanggal', width: 25 },
+    { label: 'Nama Pelanggan', width: 43 },
+    { label: 'Subtotal', width: 38, align: 'right' },
+    { label: 'Diskon', width: 30, align: 'right' },
+    { label: 'Total Akhir', width: 42, align: 'right' },
+    { label: 'Metode', width: 38 },
+    { label: 'Status', width: 43 }
+  ]
+  const formatRupiah = value => `Rp ${Number(value || 0).toLocaleString('id-ID')}`
+  const shorten = (value, maxLength) => {
+    const text = String(value || '-')
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text
+  }
 
-  let y = 51
-  reportOrders.value.slice(0, 25).forEach((o, i) => {
-    const total = Math.max(0, Number(o.total_price || 0) - Number(o.diskon || 0)) + Number(o.late_fee || 0) + Number(o.damage_fee || 0)
-    doc.text(`${i+1}. ${o.customer_name} | ${o.start_date} s/d ${o.end_date} | Rp ${total.toLocaleString('id-ID')} | [${o.status}]`, 14, y)
-    y += 6
+  const drawTableHeader = y => {
+    let x = margin
+    doc.setFillColor(5, 150, 105)
+    doc.setDrawColor(203, 213, 225)
+    doc.setTextColor(255, 255, 255)
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(8)
+    columns.forEach(column => {
+      doc.rect(x, y, column.width, rowHeight, 'FD')
+      doc.text(column.label, x + (column.align === 'right' ? column.width - 2 : column.align === 'center' ? column.width / 2 : 2), y + 5, { align: column.align || 'left' })
+      x += column.width
+    })
+    doc.setTextColor(30, 41, 59)
+    doc.setFont(undefined, 'normal')
+    return y + rowHeight
+  }
+
+  const drawTitle = () => {
+    doc.setTextColor(6, 78, 59)
+    doc.setFont(undefined, 'bold')
+    doc.setFontSize(16)
+    doc.text('JABAL OUTDOOR STORE', margin, 15)
+    doc.setFontSize(11)
+    doc.text('LAPORAN KEUANGAN', margin, 21)
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(71, 85, 105)
+    doc.text(`Periode: ${reportDateRange.value.start || '-'} s/d ${reportDateRange.value.end || '-'}`, margin, 28)
+    doc.text(`Pendapatan: ${formatRupiah(reportStats.value.totalIncome)}   |   Diskon: ${formatRupiah(reportStats.value.totalDiscount)}   |   Transaksi: ${reportStats.value.orderCount}`, margin, 34)
+  }
+
+  drawTitle()
+  let y = drawTableHeader(41)
+  doc.setFontSize(7.5)
+
+  reportOrders.value.forEach((order, index) => {
+    if (y + rowHeight > pageHeight - 14) {
+      doc.addPage()
+      drawTitle()
+      y = drawTableHeader(41)
+    }
+
+    const discount = Number(order.diskon || 0)
+    const total = Math.max(0, Number(order.total_price || 0) - discount) + Number(order.late_fee || 0) + Number(order.damage_fee || 0)
+    const values = [
+      index + 1,
+      order.created_at ? order.created_at.split('T')[0] : '-',
+      shorten(order.customer_name, 24),
+      formatRupiah(order.total_price),
+      formatRupiah(discount),
+      formatRupiah(total),
+      shorten(order.payment_method, 18),
+      shorten(order.status, 20)
+    ]
+    let x = margin
+    doc.setFillColor(index % 2 === 0 ? 248 : 255, index % 2 === 0 ? 250 : 255, index % 2 === 0 ? 252 : 255)
+    doc.setDrawColor(226, 232, 240)
+    columns.forEach((column, columnIndex) => {
+      doc.rect(x, y, column.width, rowHeight, 'FD')
+      const textX = x + (column.align === 'right' ? column.width - 2 : column.align === 'center' ? column.width / 2 : 2)
+      doc.text(String(values[columnIndex]), textX, y + 5, { align: column.align || 'left' })
+      x += column.width
+    })
+    y += rowHeight
   })
+
+  if (reportOrders.value.length === 0) {
+    doc.setTextColor(100, 116, 139)
+    doc.text('Tidak ada transaksi pada periode ini.', margin + 2, y + 6)
+  }
+
   doc.save(`Laporan_JabalOutdoor_${reportDateRange.value.start || 'periode'}_sd_${reportDateRange.value.end || 'periode'}.pdf`)
 }
 
@@ -853,9 +977,14 @@ const resetForm = () => {
   }
 }
 
+const handleCustomerScroll = () => {
+  isCustomerScrolled.value = window.scrollY > 24
+}
+
 onMounted(() => {
   fetchProducts()
   fetchOrders()
+  window.addEventListener('scroll', handleCustomerScroll, { passive: true })
 
   if (window.location.pathname === ADMIN_ROUTE || window.location.hash === '#admin') {
     currentPOV.value = 'admin_login'
@@ -872,11 +1001,12 @@ onMounted(() => {
 onUnmounted(() => {
   window.clearTimeout(splashTimer)
   window.clearTimeout(splashFadeTimer)
+  window.removeEventListener('scroll', handleCustomerScroll)
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 font-sans pb-12">
+  <div :class="currentPOV === 'customer' ? 'customer-shell' : 'admin-shell'">
 
     <!-- SPLASH SCREEN -->
     <div
@@ -899,16 +1029,26 @@ onUnmounted(() => {
     </div>
     
     <!-- TOP BAR NAVIGATION -->
-    <header class="bg-emerald-950 text-white p-3 shadow-md border-b border-emerald-800 print:hidden">
+    <header
+      class="text-white print:hidden"
+      :class="currentPOV === 'customer'
+        ? (isCustomerScrolled ? 'customer-header customer-header-scrolled' : 'customer-header')
+        : 'bg-emerald-950 p-3 shadow-md border-b border-emerald-800'
+      "
+    >
       <div class="max-w-7xl mx-auto flex justify-between items-center text-xs">
         <div class="flex items-center gap-3">
-          <img src="/logo-jabal.png" alt="Logo Jabal Outdoor" class="w-10 h-10 rounded-lg object-cover border border-emerald-700" />
+          <img src="/logo-jabal.png" alt="Logo Jabal Outdoor" class="w-10 h-10 rounded-lg object-cover customer-header-logo" />
           <div>
-            <span class="block font-black tracking-wide text-sm">JABAL OUTDOOR STORE</span>
+            <span class="block font-black tracking-[0.16em] text-sm">JABAL OUTDOOR</span>
             <span class="text-[10px] text-emerald-200">Sewa perlengkapan outdoor</span>
           </div>
         </div>
 
+        <div v-if="currentPOV === 'customer'" class="flex items-center gap-3 sm:gap-5 text-[11px] font-semibold tracking-wide">
+          <a href="#katalog" class="customer-nav-link hidden sm:inline">Katalog</a>
+          <a href="#tentang" class="customer-nav-link hidden sm:inline">Tentang Jabal</a>
+        </div>
         <div v-if="isAdminLoggedIn" class="flex items-center space-x-3">
           <button v-if="isAdminLoggedIn" @click="logoutAdmin" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded font-bold">
             Logout Admin
@@ -921,34 +1061,36 @@ onUnmounted(() => {
     <!-- ========================================== -->
     <!-- 🌐 POV 1: TAMPILAN PELANGGAN (BOOKING ONLINE) -->
     <!-- ========================================== -->
-    <main v-if="currentPOV === 'customer'" class="max-w-7xl mx-auto mt-6 px-4">
-      
-      <!-- Banner Sambutan -->
-      <div class="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-2xl p-6 text-white shadow-lg mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <img src="/logo-jabal.png" alt="Jabal Outdoor" class="hidden sm:block w-20 h-20 rounded-xl object-cover border border-emerald-500/50 shadow-lg" />
-          <div>
-          <span class="bg-emerald-600/60 text-emerald-100 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">Sewa Alat Camping Online</span>
-          <h2 class="text-2xl md:text-3xl font-black mt-2">Rental Peralatan Outdoor Cepat & Praktis!</h2>
-          <p class="text-xs text-emerald-200 mt-1 max-w-lg">Pilih peralatan camping favoritmu, tentukan tanggal sewa, dan lakukan booking secara langsung dari rumah.</p>
+    <main v-if="currentPOV === 'customer'" class="customer-page">
+      <section class="customer-hero">
+        <div class="customer-hero-content max-w-7xl mx-auto px-5 sm:px-8">
+          <p class="customer-eyebrow">JABAL OUTDOOR STORE · PARONGPONG</p>
+          <h1>Eksplorasi Alam<br /><em>Tanpa Batas.</em></h1>
+          <p class="customer-hero-copy">Perlengkapan pilihan untuk perjalanan yang lebih jauh, malam yang lebih hangat, dan cerita yang selalu ingin kamu ulangi.</p>
+          <a href="#katalog" class="customer-hero-cta">Jelajahi Perlengkapan <span aria-hidden="true">↘</span></a>
+          <div class="customer-hero-meta">
+            <span>01 / 03</span>
+            <span class="customer-hero-line"></span>
+            <span>Perlengkapan untuk perjalananmu</span>
           </div>
         </div>
-        <a href="#katalog" class="bg-white text-emerald-900 font-bold px-5 py-2.5 rounded-xl text-xs shadow hover:bg-emerald-50 transition">
-          🛒 Lihat Katalog Peralatan
-        </a>
-      </div>
+      </section>
 
       <div id="katalog" class="space-y-8">
         
         <!-- Katalog Alat Camping -->
-        <div class="space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-4 rounded-xl border">
-            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-              <span>⛺</span> Katalog Peralatan Camping
-            </h3>
-            <div class="flex gap-2">
-              <input v-model="searchProduct" type="text" placeholder="🔍 Cari tenda, bag..." class="border rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-500" />
-              <select v-model="selectedCategoryFilter" class="border rounded-lg px-2 py-1.5 text-xs">
+        <div class="customer-catalog max-w-7xl mx-auto px-5 sm:px-8 space-y-5">
+          <div class="customer-catalog-toolbar">
+            <div>
+              <p class="customer-section-kicker">THE COLLECTION</p>
+              <h2 class="customer-section-title">Perlengkapan untuk <em>perjalanan besar.</em></h2>
+            </div>
+            <div class="customer-filters">
+              <label class="customer-search">
+                <span aria-hidden="true">⌕</span>
+                <input v-model="searchProduct" type="text" placeholder="Cari perlengkapan" />
+              </label>
+              <select v-model="selectedCategoryFilter" class="customer-category-select" aria-label="Pilih kategori">
                 <option value="">Semua Kategori</option>
                 <option value="Tenda">Tenda</option>
                 <option value="Tas Gunung">Tas Gunung</option>
@@ -960,30 +1102,30 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="filteredProducts.length === 0" class="bg-white p-8 text-center text-slate-400 text-xs rounded-xl border">
+          <div v-if="filteredProducts.length === 0" class="bg-white/70 p-8 text-center text-slate-500 text-xs rounded-2xl">
             Alat camping tidak ditemukan.
           </div>
 
-          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
-            <div v-for="item in filteredProducts" :key="item.id" class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-col justify-between hover:shadow-md transition">
+          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
+            <div v-for="item in filteredProducts" :key="item.id" class="customer-product-card">
               <div>
-                <div class="w-full h-56 sm:h-64 rounded-lg mb-3 bg-slate-50 flex items-center justify-center overflow-hidden">
+                <div class="customer-product-image">
                   <img :src="item.image_url || 'https://via.placeholder.com/150'" :alt="item.name" class="w-full h-full object-contain" />
                 </div>
-                <span class="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{{ item.category }}</span>
-                <h4 class="font-bold text-slate-800 text-sm mt-1 leading-snug">{{ item.name }}</h4>
-                <p class="text-xs text-slate-500 mt-1">Rp {{ Number(item.price_per_day).toLocaleString('id-ID') }} <span class="text-[10px]">/hari</span></p>
+                <p class="customer-product-category">{{ item.category }}</p>
+                <h4>{{ item.name }}</h4>
+                <p class="customer-product-price">Rp {{ Number(item.price_per_day).toLocaleString('id-ID') }} <span>/hari</span></p>
               </div>
-              <div class="mt-3 pt-2 border-t space-y-2">
-                <button @click="showProductDetails(item)" class="w-full text-emerald-700 hover:text-emerald-900 text-[11px] font-bold text-left cursor-pointer">
-                  Lihat detail & spesifikasi →
+              <div class="customer-product-actions">
+                <button @click="showProductDetails(item)" class="customer-detail-link">
+                  Detail <span aria-hidden="true">↗</span>
                 </button>
-                <div class="flex justify-between items-center">
-                <span :class="item.total_stock > 0 ? 'text-emerald-700' : 'text-red-500'" class="text-[11px] font-bold">
+                <div class="flex justify-between items-center gap-2">
+                <span :class="item.total_stock > 0 ? 'text-[#53695b]' : 'text-red-500'" class="text-[10px] font-bold">
                   {{ item.total_stock > 0 ? `Stok: ${item.total_stock}` : 'Stok Habis' }}
                 </span>
-                <button @click="addToCart(item)" :disabled="item.total_stock <= 0" class="bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">
-                  + Sewa
+                <button @click="addToCart(item)" :disabled="item.total_stock <= 0" class="customer-rent-button">
+                  Sewa <span aria-hidden="true">+</span>
                 </button>
                 </div>
               </div>
@@ -1503,48 +1645,91 @@ onUnmounted(() => {
 
         <!-- TAB ADMIN 4: LAPORAN KEUANGAN -->
         <div v-if="activeTab === 'reports'" class="space-y-6">
-          <div class="flex flex-col sm:flex-row justify-between bg-white p-4 rounded-xl border shadow-sm gap-3">
+          <div class="flex flex-col lg:flex-row justify-between bg-white p-4 rounded-xl border shadow-sm gap-4">
             <div>
               <h3 class="font-bold text-slate-800">📊 Ekspor Laporan Keuangan</h3>
               <p class="text-xs text-slate-500">Rekap transaksi dan pendapatan berdasarkan periode</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <label class="text-xs font-semibold text-slate-600">Periode:</label>
-              <select v-model="reportPeriod" class="border rounded-lg px-3 py-2 text-xs font-semibold">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-stretch lg:items-center gap-2 lg:max-w-3xl">
+              <label class="flex items-center text-xs font-semibold text-slate-600 sm:col-span-2 lg:col-span-1">Periode:</label>
+              <select v-model="reportPeriod" class="w-full border rounded-lg px-3 py-2 text-xs font-semibold">
                 <option value="today">Hari Ini</option>
                 <option value="week">Minggu Ini</option>
-                <option value="month">Bulan Ini</option>
+                <option value="month">Bulan</option>
+                <option value="year">Per Tahun</option>
                 <option value="custom">Custom Tanggal</option>
               </select>
+              <select v-if="reportPeriod === 'month'" v-model="reportMonth" class="w-full border rounded-lg px-3 py-2 text-xs font-semibold">
+                <option :value="1">Januari</option>
+                <option :value="2">Februari</option>
+                <option :value="3">Maret</option>
+                <option :value="4">April</option>
+                <option :value="5">Mei</option>
+                <option :value="6">Juni</option>
+                <option :value="7">Juli</option>
+                <option :value="8">Agustus</option>
+                <option :value="9">September</option>
+                <option :value="10">Oktober</option>
+                <option :value="11">November</option>
+                <option :value="12">Desember</option>
+              </select>
+              <select v-if="reportPeriod === 'month' || reportPeriod === 'year'" v-model="reportYear" class="w-full border rounded-lg px-3 py-2 text-xs font-semibold">
+                <option v-for="year in reportYears" :key="year" :value="year">{{ year }}</option>
+              </select>
               <template v-if="reportPeriod === 'custom'">
-                <input v-model="reportStartDate" type="date" class="border rounded-lg px-2 py-2 text-xs" />
-                <span class="text-xs text-slate-500">s/d</span>
-                <input v-model="reportEndDate" type="date" :min="reportStartDate" class="border rounded-lg px-2 py-2 text-xs" />
+                <input v-model="reportStartDate" type="date" class="w-full border rounded-lg px-2 py-2 text-xs" />
+                <span class="hidden lg:inline text-xs text-slate-500">s/d</span>
+                <input v-model="reportEndDate" type="date" :min="reportStartDate" class="w-full border rounded-lg px-2 py-2 text-xs" />
               </template>
-              <button @click="exportToExcel" class="bg-emerald-700 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">📊 Excel (.xlsx)</button>
-              <button @click="exportToPDF" class="bg-red-700 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">📄 PDF</button>
-              <button @click="resetOrderHistory" :disabled="isResettingOrders" class="bg-slate-200 hover:bg-red-100 disabled:opacity-50 text-red-700 font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer">
-                {{ isResettingOrders ? 'Mereset...' : '🗑️ Reset Data' }}
-              </button>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="bg-white p-5 rounded-xl border shadow-sm">
+          <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+            <div class="bg-white p-4 sm:p-5 rounded-xl border shadow-sm">
               <p class="text-xs text-slate-500 font-bold uppercase">Total Pendapatan</p>
-              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ reportStats.totalIncome.toLocaleString('id-ID') }}</p>
+              <p class="text-lg sm:text-2xl font-black text-emerald-700 mt-1 break-words">Rp {{ reportStats.totalIncome.toLocaleString('id-ID') }}</p>
             </div>
-            <div class="bg-white p-5 rounded-xl border shadow-sm">
+            <div class="bg-white p-4 sm:p-5 rounded-xl border shadow-sm">
               <p class="text-xs text-slate-500 font-bold uppercase">Total Diskon Diberikan</p>
-              <p class="text-2xl font-black text-red-600 mt-1">Rp {{ reportStats.totalDiscount.toLocaleString('id-ID') }}</p>
+              <p class="text-lg sm:text-2xl font-black text-red-600 mt-1 break-words">Rp {{ reportStats.totalDiscount.toLocaleString('id-ID') }}</p>
             </div>
-            <div class="bg-white p-5 rounded-xl border shadow-sm">
+            <div class="bg-white p-4 sm:p-5 rounded-xl border shadow-sm">
               <p class="text-xs text-slate-500 font-bold uppercase">Total Transaksi</p>
-              <p class="text-2xl font-black text-slate-800 mt-1">{{ reportStats.orderCount }} Transaksi</p>
+              <p class="text-lg sm:text-2xl font-black text-slate-800 mt-1">{{ reportStats.orderCount }} Transaksi</p>
             </div>
-            <div class="bg-white p-5 rounded-xl border shadow-sm">
+            <div class="bg-white p-4 sm:p-5 rounded-xl border shadow-sm">
               <p class="text-xs text-slate-500 font-bold uppercase">Laba Bersih</p>
-              <p class="text-2xl font-black text-emerald-700 mt-1">Rp {{ reportStats.netProfit.toLocaleString('id-ID') }}</p>
+              <p class="text-lg sm:text-2xl font-black text-emerald-700 mt-1 break-words">Rp {{ reportStats.netProfit.toLocaleString('id-ID') }}</p>
+            </div>
+          </div>
+
+          <div v-if="reportPeriod === 'year'" class="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div class="p-4 border-b flex items-center justify-between gap-2">
+              <div>
+                <h3 class="font-bold text-slate-800">Rekap Bulanan {{ reportYear }}</h3>
+                <p class="text-xs text-slate-500">Riwayat pendapatan Januari sampai Desember</p>
+              </div>
+              <span class="text-xs font-semibold text-slate-500">12 bulan</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[620px] text-left text-xs">
+                <thead class="bg-slate-50 border-b text-slate-600 uppercase">
+                  <tr>
+                    <th class="p-3">Bulan</th>
+                    <th class="p-3 text-right">Pendapatan</th>
+                    <th class="p-3 text-right">Diskon</th>
+                    <th class="p-3 text-center">Transaksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  <tr v-for="month in monthlyReport" :key="month.month" class="hover:bg-slate-50">
+                    <td class="p-3 font-semibold capitalize text-slate-700">{{ month.label }}</td>
+                    <td class="p-3 text-right font-bold text-emerald-700">Rp {{ month.income.toLocaleString('id-ID') }}</td>
+                    <td class="p-3 text-right text-red-600">Rp {{ month.discount.toLocaleString('id-ID') }}</td>
+                    <td class="p-3 text-center text-slate-600">{{ month.orderCount }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -1554,7 +1739,10 @@ onUnmounted(() => {
                 <h3 class="font-bold text-slate-800">Tabel Transaksi</h3>
                 <p class="text-xs text-slate-500">{{ reportDateRange.start || '-' }} s/d {{ reportDateRange.end || '-' }}</p>
               </div>
-              <span class="text-xs font-semibold text-slate-500">{{ reportOrders.length }} data</span>
+              <div class="text-right">
+                <span class="text-xs font-semibold text-slate-500">{{ reportOrders.length }} data</span>
+                <p class="text-[10px] text-slate-400 sm:hidden">Geser tabel ke samping</p>
+              </div>
             </div>
             <div v-if="reportOrders.length === 0" class="p-10 text-center text-sm text-slate-400">Belum ada transaksi pada periode ini.</div>
             <div v-else class="overflow-x-auto">
@@ -1583,6 +1771,14 @@ onUnmounted(() => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row justify-end gap-2 pt-1">
+            <button @click="exportToExcel" class="w-full sm:w-auto bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg cursor-pointer">📊 Excel (.xlsx)</button>
+            <button @click="exportToPDF" class="w-full sm:w-auto bg-red-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg cursor-pointer">📄 PDF</button>
+            <button @click="resetOrderHistory" :disabled="isResettingOrders" class="w-full sm:w-auto bg-slate-200 hover:bg-red-100 disabled:opacity-50 text-red-700 font-semibold text-xs px-4 py-2.5 rounded-lg cursor-pointer">
+              {{ isResettingOrders ? 'Mereset...' : '🗑️ Reset Data' }}
+            </button>
           </div>
         </div>
 
@@ -1808,7 +2004,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <footer v-if="currentPOV === 'customer'" class="mt-12 bg-emerald-950 text-white print:hidden">
+    <footer v-if="currentPOV === 'customer'" id="tentang" class="mt-12 bg-emerald-950 text-white print:hidden">
       <div class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div class="flex items-center gap-3">
           <img src="/logo-jabal.png" alt="Logo Jabal Outdoor" class="w-12 h-12 rounded-lg object-cover" />
