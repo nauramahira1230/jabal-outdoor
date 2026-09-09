@@ -10,6 +10,7 @@ const ADMIN_ROUTE = '/admin'
 const ADMIN_WHATSAPP = '6289517829189'
 const pinInput = ref('')
 const pinError = ref(false)
+const isAdminLoggingIn = ref(false)
 
 // Mode POV: 'customer' (Pelanggan) atau 'admin' (Kasir/Admin)
 const currentPOV = ref('customer')
@@ -65,6 +66,7 @@ const paymentStatus = ref('Lunas')
 const proofFile = ref(null)
 const bookingSuccessModal = ref(false)
 const checkoutModalOpen = ref(false)
+const qrisPreviewOpen = ref(false)
 const cashierCheckoutOpen = ref(false)
 const mobileCashierCheckoutOpen = ref(false)
 const lastBookingData = ref(null)
@@ -104,12 +106,17 @@ const fetchOrders = async () => {
 }
 
 // Auth Admin PIN
-const loginAdmin = () => {
+const loginAdmin = async () => {
+  if (isAdminLoggingIn.value) return
+
   if (pinInput.value === ADMIN_PIN) {
+    pinError.value = false
+    isAdminLoggingIn.value = true
+    pinInput.value = ''
+    await new Promise(resolve => window.setTimeout(resolve, 1000))
     isAdminLoggedIn.value = true
     currentPOV.value = 'admin'
-    pinError.value = false
-    pinInput.value = ''
+    isAdminLoggingIn.value = false
   } else {
     pinError.value = true
   }
@@ -1066,7 +1073,9 @@ onUnmounted(() => {
 
             <div v-if="paymentMethod === 'QRIS'" class="bg-emerald-50 p-3 rounded-lg border border-emerald-200 text-[11px] space-y-2 text-center">
               <p class="font-bold">Scan QRIS, lalu upload bukti pembayaran</p>
-              <img src="/qris-jabal.png" alt="QRIS pembayaran Jabal Outdoor" class="w-44 h-44 object-contain mx-auto bg-white rounded-lg border" />
+              <button type="button" @click="qrisPreviewOpen = true" class="block mx-auto cursor-zoom-in" aria-label="Perbesar QRIS">
+                <img src="/qris-jabal.png" alt="QRIS pembayaran Jabal Outdoor" class="w-44 h-44 object-contain bg-white rounded-lg border" />
+              </button>
               <label class="block text-left font-semibold text-slate-600">Bukti pembayaran QRIS *</label>
               <input type="file" accept="image/*" @change="handleProofChange" required class="w-full text-xs border rounded-lg p-1.5 bg-white text-left" />
             </div>
@@ -1100,6 +1109,13 @@ onUnmounted(() => {
 
           <button @click="processCheckout(true)" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-lg text-xs transition shadow cursor-pointer">🚀 Kirim Booking Sewa</button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="qrisPreviewOpen" class="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4" @click.self="qrisPreviewOpen = false">
+      <div class="relative max-w-2xl w-full flex items-center justify-center">
+        <img src="/qris-jabal.png" alt="QRIS pembayaran Jabal Outdoor diperbesar" class="max-w-full max-h-[85vh] object-contain rounded-xl bg-white p-2 shadow-2xl" />
+        <button @click="qrisPreviewOpen = false" type="button" aria-label="Tutup QRIS" class="absolute -top-3 -right-3 w-9 h-9 rounded-full bg-white text-slate-700 text-2xl leading-none shadow-lg cursor-pointer">×</button>
       </div>
     </div>
 
@@ -1146,13 +1162,15 @@ onUnmounted(() => {
         </div>
 
         <div>
-          <input v-model="pinInput" type="password" maxlength="8" placeholder="Masukkan password admin" @keyup.enter="loginAdmin" class="w-full border-2 rounded-xl p-2.5 text-center text-lg font-bold tracking-widest outline-none focus:border-emerald-600" />
+          <input v-model="pinInput" type="password" maxlength="8" placeholder="Masukkan password admin" :disabled="isAdminLoggingIn" @keyup.enter="loginAdmin" class="w-full border-2 rounded-xl p-2.5 text-center text-lg font-bold tracking-widest outline-none focus:border-emerald-600 disabled:bg-slate-100" />
           <p v-if="pinError" class="text-xs text-red-600 font-semibold mt-1">PIN salah! Silakan coba lagi.</p>
         </div>
 
         <div class="flex gap-2">
-          <button @click="loginAdmin" class="flex-1 bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs">Masuk Admin</button>
-          <button @click="closeAdminLogin" class="bg-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-xs">Batal</button>
+          <button @click="loginAdmin" :disabled="isAdminLoggingIn" class="flex-1 bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs disabled:opacity-60">
+            {{ isAdminLoggingIn ? 'Memuat dashboard...' : 'Masuk Admin' }}
+          </button>
+          <button @click="closeAdminLogin" :disabled="isAdminLoggingIn" class="bg-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-xs disabled:opacity-60">Batal</button>
         </div>
       </div>
     </div>
